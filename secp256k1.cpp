@@ -314,8 +314,15 @@ void jacobianDouble(ECPointJacobian *R, const ECPointJacobian *P) {
 
     uint64_t A[4], B[4], C[4], D[4], E[4], F[4], newZ[4], tmp[4];
 
-    modMulMontP(newZ, P->Y, P->Z);
+    bool z_is_one = (P->Z[0] == ONE_MONT[0] && P->Z[1] == ONE_MONT[1] && P->Z[2] == ONE_MONT[2] && P->Z[3] == ONE_MONT[3]);
+
+    if (z_is_one) {
+        for(int i = 0; i < 4; ++i) newZ[i] = P->Y[i];
+    } else {
+        modMulMontP(newZ, P->Y, P->Z);
+    }
     modAddP(newZ, newZ, newZ);
+    
     modMulMontP(A, P->X, P->X);
     modMulMontP(B, P->Y, P->Y);
     modMulMontP(C, B, B);
@@ -345,14 +352,27 @@ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJaco
     uint64_t Z1Z1[4], Z2Z2[4], U1[4], U2[4], S1[4], S2[4];
     uint64_t H[4], I[4], J[4], r[4], V[4], SJ[4], newZ[4], newX[4], newY[4];
 
-    modMulMontP(Z1Z1, P->Z, P->Z);
-    modMulMontP(Z2Z2, Q->Z, Q->Z);
-    modMulMontP(U1, P->X, Z2Z2);
-    modMulMontP(U2, Q->X, Z1Z1);
-    modMulMontP(S1, P->Y, Z2Z2);
-    modMulMontP(S1, S1, Q->Z);
-    modMulMontP(S2, Q->Y, Z1Z1);
-    modMulMontP(S2, S2, P->Z);
+    bool z1_is_one = (P->Z[0] == ONE_MONT[0] && P->Z[1] == ONE_MONT[1] && P->Z[2] == ONE_MONT[2] && P->Z[3] == ONE_MONT[3]);
+    bool z2_is_one = (Q->Z[0] == ONE_MONT[0] && Q->Z[1] == ONE_MONT[1] && Q->Z[2] == ONE_MONT[2] && Q->Z[3] == ONE_MONT[3]);
+
+    if (z1_is_one) {
+        for(int i = 0; i < 4; ++i) { Z1Z1[i] = ONE_MONT[i]; U2[i] = Q->X[i]; S2[i] = Q->Y[i]; }
+    } else {
+        modMulMontP(Z1Z1, P->Z, P->Z);
+        modMulMontP(U2, Q->X, Z1Z1);
+        modMulMontP(S2, Q->Y, Z1Z1);
+        modMulMontP(S2, S2, P->Z);
+    }
+    
+    if (z2_is_one) {
+        for(int i = 0; i < 4; ++i) { Z2Z2[i] = ONE_MONT[i]; U1[i] = P->X[i]; S1[i] = P->Y[i]; }
+    } else {
+        modMulMontP(Z2Z2, Q->Z, Q->Z);
+        modMulMontP(U1, P->X, Z2Z2);
+        modMulMontP(S1, P->Y, Z2Z2);
+        modMulMontP(S1, S1, Q->Z);
+    }
+
     modSubP(H, U2, U1);
     modSubP(r, S2, S1);
 
@@ -376,8 +396,17 @@ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJaco
     modMulMontP(newY, newY, r);
     modMulMontP(SJ, S1, J);
     modSubP(newY, newY, SJ);
-    modMulMontP(newZ, P->Z, Q->Z);
-    modMulMontP(newZ, newZ, H);
+
+    if (z1_is_one && z2_is_one) {
+        for(int i = 0; i < 4; ++i) newZ[i] = H[i];
+    } else if (z1_is_one) {
+        modMulMontP(newZ, Q->Z, H);
+    } else if (z2_is_one) {
+        modMulMontP(newZ, P->Z, H);
+    } else {
+        modMulMontP(newZ, P->Z, Q->Z);
+        modMulMontP(newZ, newZ, H);
+    }
 
     for(int i=0; i<4; i++) {
         R->X[i] = newX[i];
