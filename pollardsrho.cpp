@@ -1,9 +1,26 @@
-/******************************************************************************************************
-* This file is part of the Pollard's Rho distribution: (https://github.com/lucaselblanc/pollardsrho)  *
-* Copyright (c) 2024, 2026 Lucas Leblanc.                                                             *
-* Distributed under the MIT software license, see the accompanying.                                   *
-* file COPYING or https://www.opensource.org/licenses/mit-license.php.                                *
-******************************************************************************************************/
+/********************************************************************************************************
+* This file is part of the Pollard's Rho distribution: (https://github.com/lucaselblanc/pollardsrho)    *
+* Copyright (c) 2024, 2026 Lucas Leblanc.                                                               *
+* Distributed under the MIT software license, see the accompanying.                                     *
+* file COPYING or https://www.opensource.org/licenses/mit-license.php.                                  *
+*********************************************************************************************************/
+
+/************************************************ PAPERS ************************************************
+* J. M. Pollard (1978) - Monte Carlo methods for index computation (mod p):                             *
+* https://www.ams.org/journals/mcom/1978-32-143/S0025-5718-1978-0491431-9/S0025-5718-1978-0491431-9.pdf *
+*                                                                                                       *
+* P. C. Van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications: *
+* https://people.scs.carleton.ca/~paulv/papers/JoC97.pdf                                                *
+*                                                                                                       *
+* Peter L. Montgomery (1987) - Speeding the Pollard and Elliptic Curve Methods of Factorization:        *
+* https://www.ams.org/journals/mcom/1987-48-177/S0025-5718-1987-0866113-7/S0025-5718-1987-0866113-7.pdf *
+*                                                                                                       *
+* Richard P. Brent (1980) - An improved Monte Carlo factorization algorithm:                            *
+* https://maths-people.anu.edu.au/~brent/pd/rpb051i.pdf                                                 *
+*                                                                                                       *
+* SECG - SEC 2 (2010): Recommended Elliptic Curve Domain Parameters (secp256k1 specification):          *
+* https://www.secg.org/sec2-v2.pdf                                                                      *
+*********************************************************************************************************/
 
 /*****************************************
 * Pollard's Rho Algorithm for SECP256K1  *
@@ -664,11 +681,15 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
         }
 
         uint64_t* z_inv = &scratch_inv[i * 4];
-        uint64_t z2[4], tmp_mont[4];
+        uint64_t z2[4], z3[4], tmp_mont[4];
 
         modMulMontP(z2, z_inv, z_inv);
         modMulMontP(tmp_mont, jac_in[i].X, z2);
         fromMontgomeryP(aff_out[i].x, tmp_mont);
+
+        modMulMontP(z3, z2, z_inv);
+        modMulMontP(tmp_mont, jac_in[i].Y, z3);
+        fromMontgomeryP(aff_out[i].y, tmp_mont);
 
         aff_out[i].infinity = 0;
     }
@@ -694,11 +715,28 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
         max_scalar.limbs[limb] = (bit == 63) ? ~0ULL : (1ULL << (bit + 1)) - 1;
     }
 
+    uint256_t half_range{};
+    int hr_bit = key_range - 2;
+    if (hr_bit >= 0) {
+        half_range.limbs[hr_bit / 64] = 1ULL << (hr_bit % 64);
+    } else {
+        half_range.limbs[0] = 1;
+    }
+    uint256_t shift_scalar = add_uint256(min_scalar, half_range);
+
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
     ECPointAffine target_affine{};
     ECPointJacobian target_affine_jac{};
     decompressPublicKey(&target_affine, target_pubkey.data());
     affineToJacobian(&target_affine_jac, &target_affine);
+
+    uint64_t shift_arr[4];
+    uint256_to_uint64_array(shift_arr, shift_scalar);
+    ECPointJacobian shift_jac;
+    jacobianScalarMultPhi(&shift_jac, preCompG, preCompGphi, shift_arr, windowSize);
+    uint64_t zero[4] = {0,0,0,0};
+    modSubP(shift_jac.Y, zero, shift_jac.Y);
+    pointAddJacobian(&target_affine_jac, &target_affine_jac, &shift_jac);
     initPreCompH(&target_affine_jac, windowSize);
 
     const uint32_t N_STEPS = 2048;
@@ -706,10 +744,12 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(target_affine.x[0]);
     uint256_t stepSize = {};
-    stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
+    int actual_step_bit = (key_range / 2) + 3;
+    stepSize.limbs[actual_step_bit / 64] = 1ULL << (actual_step_bit % 64);
 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, salt);
+        localStepTable[i].a.limbs[0] &= 0xFFFFFFFFFFFFFFFEULL;
         localStepTable[i].b = uint256_t{};
         uint64_t a_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
@@ -767,56 +807,29 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
     uint256_t S2 = S;
     scalarAdd(S2.limbs, S2.limbs, S.limbs);
     uint256_t S3 = S2;
-    scalarAdd(S3.limbs, S3.limbs, S.limbs);
+    uint256_t gk{};
+    int g_bit = key_range - 4;
+    gk.limbs[g_bit / 64] = 1ULL << (g_bit % 64);
 
-    uint256_t a_dist = (compare_uint256(S2, min_dp_dist) > 0) ? S2 : min_dp_dist;
-    uint256_t b_dist = (compare_uint256(S3, min_dp_dist) > 0) ? S3 : min_dp_dist;
-    uint256_t b_delta{};
-    int b_length = std::max<int>(1, WALKERS / 2);
-    int b_shift = 0;
-    int temp = b_length;
-    while (temp >>= 1) b_shift++;
-    int base_step_bit = key_range / 2;
-    int delta_bit = base_step_bit - b_shift;
-
-    if (delta_bit >= key_range) delta_bit = key_range - 1;
-    if (delta_bit < 0) delta_bit = 0;
-
-    b_delta.limbs[delta_bit / 64] = 1ULL << (delta_bit % 64);
-    uint256_t b_offset{};
-
-    std::vector<uint256_t> a_bases(WALKERS);
-    std::vector<uint256_t> a_edge(WALKERS);
-    for(int i = 0; i < WALKERS; i++) {
-        if (i % 2 == 0) {
-            int j = i / 2;
-            uint256_t offset_S{};
-            for(int k = 0; k < j; k++) scalarAdd(offset_S.limbs, offset_S.limbs, S.limbs);
-            uint256_t base_a = min_scalar;
-            scalarAdd(base_a.limbs, base_a.limbs, offset_S.limbs);
-            a_bases[i] = base_a;
-            uint256_t edge = base_a;
-            scalarAdd(edge.limbs, edge.limbs, a_dist.limbs);
-            a_edge[i] = edge;
-        } else {
-            a_bases[i] = b_offset;
-            scalarAdd(b_offset.limbs, b_offset.limbs, b_delta.limbs);
-        }
-    }
+    uint256_t hk{};
+    int h_bit = key_range - 1;
+    hk.limbs[h_bit / 64] = 1ULL << (h_bit % 64);
 
     auto reset = [&](WalkState* w, bool a) {
         w->rng.seed(std::random_device{}() ^ (uint64_t)w->walk_id ^ std::chrono::high_resolution_clock::now().time_since_epoch().count());
 
+        uint256_t N_uint256;
+        N_uint256.limbs[0] = 0xBFD25E8CD0364141ULL;
+        N_uint256.limbs[1] = 0xBAAEDCE6AF48A03BULL;
+        N_uint256.limbs[2] = 0xFFFFFFFFFFFFFFFEULL;
+        N_uint256.limbs[3] = 0xFFFFFFFFFFFFFFFFULL;
+
         if (a) {
-            uint256_t base_a = a_bases[w->walk_id];
-            uint256_t max_a = base_a;
-            scalarAdd(max_a.limbs, max_a.limbs, S.limbs);
-            if (compare_uint256(max_a, max_scalar) > 0) max_a = max_scalar;
-            if (compare_uint256(base_a, max_a) > 0) base_a = max_a;
-            w->a = rng_mersenne_twister(base_a, max_a, w->rng);
+            w->a = rng_mersenne_twister(uint256_t{}, gk, w->rng);
             w->b = uint256_t{};
         } else {
-            w->a = a_bases[w->walk_id];
+            w->a = rng_mersenne_twister(uint256_t{}, hk, w->rng);
+            w->a.limbs[0] &= ~1ULL;
             w->b = uint256_t{};
             w->b.limbs[0] = 1;
         }
@@ -853,7 +866,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
     if (!resumed_snapoint)
     {
         unsigned int load_threads = std::min<unsigned int>(cores, WALKERS);
-
         std::vector<std::thread> load_workers;
         load_workers.reserve(load_threads);
         std::atomic<int> loaded_count{0};
@@ -862,43 +874,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
         {
             for (int i = start; i < end; i++)
             {
-                walkers_state[i].rng.seed(std::random_device{}() ^ (uint64_t)i);
-                walkers_state[i].buffers = nullptr;
-
-                if (i % 2 == 0) {
-                    uint256_t base_a = a_bases[i];
-                    uint256_t max_a = base_a;
-                    scalarAdd(max_a.limbs, max_a.limbs, S.limbs);
-                    if (compare_uint256(max_a, max_scalar) > 0) max_a = max_scalar;
-                    if (compare_uint256(base_a, max_a) > 0) base_a = max_a;
-                    walkers_state[i].a = rng_mersenne_twister(base_a, max_a, walkers_state[i].rng);
-                    walkers_state[i].b = uint256_t{};
-                }
-                else {
-                    walkers_state[i].a = a_bases[i];
-                    walkers_state[i].b = uint256_t{};
-                    walkers_state[i].b.limbs[0] = 1;
-                }
-
                 walkers_state[i].walk_id = i;
-                walkers_state[i].snapshot_steps = 0;
-
-                memset(walkers_state[i].snapshot_x, 0, 32);
-                memset(walkers_state[i].prev_x1, 0, 32);
-                memset(walkers_state[i].prev_x2, 0, 32);
-
-                uint64_t a_arr[4];
-                uint256_to_uint64_array(a_arr, walkers_state[i].a);
-
-                ECPointJacobian Ra;
-                jacobianScalarMultPhi(&Ra, preCompG, preCompGphi, a_arr, windowSize);
-
-                if (i % 2 == 0) {
-                    walkers_state[i].R = Ra;
-                }
-                else {
-                    pointAddJacobian(&walkers_state[i].R, &Ra, &target_affine_jac);
-                }
+                walkers_state[i].buffers = nullptr;
+                reset(&walkers_state[i], i % 2 == 0);
             }
         };
 
@@ -999,6 +977,8 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
             std::vector<ECPointAffine> aff_batch(local_count);
             std::vector<uint64_t> scratch_prefix(local_count * 4);
             std::vector<uint64_t> scratch_inv(local_count * 4);
+            constexpr uint32_t INV_FLAG = 0x80000000u;
+            std::vector<uint32_t> last_jmp_id(local_count, 0xFFFFFFFFu);
 
             for (int i = 0; i < local_count; i++) {
                 jac_batch[i] = walkers_state[id_start + i].R;
@@ -1015,8 +995,20 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                     memcpy(w->prev_x2, w->prev_x1, 32);
                     memcpy(w->prev_x1, aff_batch[i].x, 32);
                     uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
-                    pointAddJacobian(&w->R, &w->R, &localStepTable[step_idx].point);
-                    scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
+                    bool negate = aff_batch[i].y[0] & 1;
+                    uint32_t cur_jmp_id = step_idx | (negate ? INV_FLAG : 0);
+                    ECPointJacobian step_point = localStepTable[step_idx].point;
+                    if (negate) {
+                        uint64_t zero[4] = {0, 0, 0, 0};
+                        modSubP(step_point.Y, zero, step_point.Y);
+                    }
+                    pointAddJacobian(&w->R, &w->R, &step_point);
+                    if (negate) {
+                        scalarSub(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
+                    } else {
+                        scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
+                    }
+                    last_jmp_id[i] = cur_jmp_id;
                     jac_batch[i] = w->R;
                 }
 
@@ -1024,14 +1016,39 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x1, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) {
+                    if (last_jmp_id[i] != 0xFFFFFFFFu) {
+                        uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
+                        bool y_odd = aff_batch[i].y[0] & 1;
+                        uint32_t next_jmp_id = step_idx | (y_odd ? 0 : INV_FLAG);
+                        if (last_jmp_id[i] == next_jmp_id) {
+                            MurmurHash3 hasher;
+                            uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xDEADBEEFULL) % N_STEPS);
+                            ECPointJacobian escape_point = localStepTable[idx].point;
+                            pointAddJacobian(&w->R, &w->R, &escape_point);
+                            scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
+                            ECPointAffine aff_escape;
+                            jacobianToAffine(&aff_escape, &w->R);
+                            aff_batch[i] = aff_escape;
+                            jac_batch[i] = w->R;
+                            last_jmp_id[i] = 0xFFFFFFFFu;
+                            w->snapshot_steps = 0;
+                            memset(w->snapshot_x, 0xFF, 32);
+                            memset(w->prev_x1, 0xFE, 32);
+                            memset(w->prev_x2, 0xFD, 32);
+                            continue;
+                        }
+                    }
+
+                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) {
                         MurmurHash3 hasher;
                         uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
-                        pointAddJacobian(&w->R, &w->R, &localStepTable[idx].point);
+                        ECPointJacobian escape_point = localStepTable[idx].point;
+                        pointAddJacobian(&w->R, &w->R, &escape_point);
                         scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
                         ECPointAffine aff_jump;
                         jacobianToAffine(&aff_jump, &w->R);
                         aff_batch[i] = aff_jump;
+                        last_jmp_id[i] = 0xFFFFFFFFu;
                         w->snapshot_steps = 0;
                         memset(w->snapshot_x, 0xFF, 32);
                         memset(w->prev_x1, 0xFE, 32);
@@ -1043,17 +1060,6 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                     w->snapshot_steps++;
                     if ((w->snapshot_steps & (w->snapshot_steps - 1)) == 0) {
                         memcpy(w->snapshot_x, aff_batch[i].x, 32);
-                    }
-
-                    uint256_t current_edge = (w->walk_id % 2 == 0) ? a_edge[w->walk_id] : b_dist;
-
-                    if (compare_uint256(w->a, current_edge) > 0) {
-                        reset(w, (w->walk_id % 2 == 0));
-                        ECPointAffine new_aff;
-                        jacobianToAffine(&new_aff, &w->R);
-                        aff_batch[i] = new_aff;
-                        jac_batch[i] = w->R;
-                        continue;
                     }
 
                     if (!DP(aff_batch[i].x, DP_BITS)) continue;
@@ -1096,17 +1102,66 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                             if (compare_uint256(found_dp.b, w->b) >= 0) db = sub_uint256(found_dp.b, w->b);
                             else db = sub_uint256(N, sub_uint256(w->b, found_dp.b));
 
-                            if (!scalarIsZero(db.limbs)) {
-                                inv_db = modinv(db, N);
-                                uint64_t res_k[4];
-                                scalarMul(res_k, da.limbs, inv_db.limbs);
+                            auto test_key = [&](const uint64_t* candidate_k) -> bool {
+                                uint256_t k_tmp;
+                                k_tmp.limbs[0] = candidate_k[0]; k_tmp.limbs[1] = candidate_k[1];
+                                k_tmp.limbs[2] = candidate_k[2]; k_tmp.limbs[3] = candidate_k[3];
+                                k_tmp = mod_add_N(k_tmp, shift_scalar);
+                                uint64_t real_k[4];
+                                real_k[0] = k_tmp.limbs[0]; real_k[1] = k_tmp.limbs[1];
+                                real_k[2] = k_tmp.limbs[2]; real_k[3] = k_tmp.limbs[3];
                                 unsigned char test_pub[33];
-                                generatePublicKey(preCompG, preCompGphi, test_pub, res_k, windowSize);
+                                generatePublicKey(preCompG, preCompGphi, test_pub, real_k, windowSize);
                                 if (memcmp(test_pub, target_pubkey.data(), 33) == 0) {
-                                    memcpy(k.limbs, res_k, 32);
-                                    search_in_progress.store(false, std::memory_order_release);
-                                    break;
+                                    memcpy(k.limbs, real_k, 32);
+                                    return true;
                                 }
+                                return false;
+                            };
+
+                            bool solved = false;
+                            if (!scalarIsZero(db.limbs)) {
+                                uint64_t res_k[4];
+                                uint256_t res_k_256;
+                                if (db.limbs[0] == 1 && db.limbs[1] == 0 && db.limbs[2] == 0 && db.limbs[3] == 0) {
+                                    res_k_256 = da;
+                                } else {
+                                    res_k_256 = sub_uint256(N, da);
+                                }
+                                memcpy(res_k, res_k_256.limbs, 32);
+                                uint64_t neg_k[4];
+                                scalarNeg(neg_k, res_k);
+
+                                if (test_key(res_k)) solved = true;
+                                if (!solved) {
+                                    if (test_key(neg_k)) solved = true;
+                                }
+                            }
+
+                            if (!solved) {
+                                uint256_t da_sum = mod_add_N(w->a, found_dp.a);
+                                uint256_t db_sum = mod_add_N(w->b, found_dp.b);
+                                if (!scalarIsZero(db_sum.limbs)) {
+                                    uint256_t inv_db_sum = modinv(db_sum, N);
+                                    uint64_t res_k[4];
+                                    memcpy(res_k, da_sum.limbs, 32);
+                                    scalarNeg(res_k, res_k);
+
+                                    uint64_t neg_k[4];
+                                    scalarNeg(neg_k, res_k);
+
+                                    if (test_key(res_k)) solved = true;
+                                    if (!solved) {
+                                        if (test_key(neg_k)) solved = true;
+                                    }
+                                }
+                            }
+                            if (solved) {
+                                search_in_progress.store(false, std::memory_order_release);
+                                break;
+                            } else {
+                                reset(w, w->walk_id % 2 == 0);
+                                jac_batch[i] = w->R;
                             }
                         }
                     } catch (const std::exception& e) {
@@ -1134,10 +1189,9 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                 long double x = (k * k) / (2.0L * M);
                 long double d = x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
-                std::string healthWalking = total_cycles.load() == 0 ? " - \033[92mGood\033[0m" : " - \033[91mBad\033[0m";
                 std::string snapointStatus = snapoint_path.empty() ? "Off" : (resumed_snapoint ? "Restored/" : "") + std::to_string(snapoint_saves.load(std::memory_order_relaxed));
                 if (snapoint_errors.load(std::memory_order_relaxed) > 0) snapointStatus += " Err:" + std::to_string(snapoint_errors.load(std::memory_order_relaxed));
-                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/10s: " << RESET << GREEN << total_iters.load() << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << healthWalking << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
+                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/10s: " << RESET << GREEN << total_iters.load() << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
                 last_print = now;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -1263,6 +1317,144 @@ std::string HexToWif(const std::string& hexKey) {
     payload.push_back(0x01);
     return EncodeBase58Check(payload);
 }
+
+/*
+int main(int argc, char* argv[]) {
+    std::string pub_key_hex;
+    int key_range;
+    int walkers;
+    int dp = -1;
+    std::string snapoint_path;
+
+    if (argc == 1) {
+        std::cout << "The Parameters Cannot Be Empty!" << std::endl;
+        return 1;
+    }
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "--pubkey" && i + 1 < argc) {
+            pub_key_hex = argv[++i];
+        } else if (arg == "--keyrange" && i + 1 < argc) {
+            key_range = std::stoi(argv[++i]);
+        } else if (arg == "--walkers" && i + 1 < argc) {
+            walkers = std::stoi(argv[++i]);
+        } else if (arg == "--dp" && i + 1 < argc) {
+            dp = std::stoi(argv[++i]);
+        }
+          else if (arg == "--snaptime" && i + 1 < argc) {
+            snaptime_sec = std::stoi(argv[++i]);
+        }
+          else if (arg == "--t" && i + 1 < argc) {
+            cores = std::stoi(argv[++i]);
+        }
+        else {
+            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+            std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
+            << GREEN << "*" << RESET << " --pubkey        => Compressed Public Key        <hex> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --keyrange      => Key Range Bits               <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --walkers       => Number Of Walkers            <int> ("<< RED << "*" << RESET << "Required)\n"
+            << GREEN << "*" << RESET << " --dp            => Distinguished Points Bits    <int> ("<< GREEN << "*" << RESET << "Optional)\n"
+            << GREEN << "*" << RESET << " --snaptime      => Snapoints Seconds            <int> 0 disables periodic saves ("<< GREEN << "*" << RESET << "Optional)\n"
+            << GREEN << "*" << RESET << " --t             => Work Threads                 <int> ("<< GREEN << "*" << RESET << "Optional)\n";
+            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+            return 1;
+        }
+    }
+
+    if (pub_key_hex.length() != 66) {
+        std::cerr << RED << "[ERROR] The Compressed Public Key Must Be Exactly 66 Characters Long, Prefix 02/03 + 64 Hex." << RESET << std::endl;
+        std::cerr << "Current Length: " << pub_key_hex.length() << std::endl;
+        return 1;
+    }
+
+    std::string prefix = pub_key_hex.substr(0, 2);
+    if (prefix != "02" && prefix != "03") {
+        std::cerr << RED << "[ERROR] Unusual Compressed Key Prefix: " << prefix <<", Expected: 02/03." << RESET << std::endl;
+        std::cerr << "Prefix Entered: " << prefix << std::endl;
+        return 1;
+    }
+
+    if (key_range < 45 || key_range > 256) {
+        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (45 - 256)." << RESET << std::endl;
+        std::cerr << "Value Entered: " << key_range << std::endl;
+        return 1;
+    }
+
+    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
+    if (dp <= 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
+        std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
+        dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
+    }
+
+    if (snapoint_path.empty()) {
+        snapoint_path = pub_key_hex + ".saved";
+    }
+
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snapoints File: " << RESET << CYAN << snapoint_path << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snaptime Interval: " << RESET << PINK << snaptime_sec << RESET << GREEN << "s" << RESET << std::endl;
+    uint64_t max_throughput = cores * 512ULL;
+    if (walkers != max_throughput) {
+        std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, Maximum Throughput Reached At: ~" << RESET << PINK << max_throughput << RESET << "." << std::endl;
+    }
+    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
+
+    init_secp256k1(key_range);
+    uint256_t found_key = prho(pub_key_hex, key_range, walkers, dp, snapoint_path, snaptime_sec);
+
+    std::cout << GREEN << "[SUCCESS!] " << RESET << "Collision Found!" << std::endl;
+
+    unsigned char test_pub[33];
+    auto target_pubkey = hex_to_bytes(pub_key_hex);
+    generatePublicKey(preCompG, preCompGphi, test_pub, found_key.limbs, windowSize);
+
+    if (memcmp(test_pub, target_pubkey.data(), 33) != 0) {
+        std::cout << RED << "[ERROR!] Incorrect Public Key: " << RESET;
+        for (int i = 0; i < 33; i++) printf("%02x", test_pub[i]);
+        std::cout << std::dec << std::endl;
+    }
+    else
+    {
+        std::cout << GREEN << "[SUCCESS!] " << RESET << "Public Key Match: " << PINK;
+        for (int i = 0; i < 33; i++) printf("%02x", test_pub[i]);
+        std::cout << RESET << std::dec << std::endl;
+    }
+
+    save_key(pub_key_hex, found_key);
+    std::cout << ORANGE << "[WIF Key]: " << CYAN << HexToWif(uint256_to_hex(found_key)) << RESET << std::endl;
+    std::cout << GREEN << "[Private Key]: " << RESET << gradient_zeros(uint256_to_hex(found_key), DARK_PINK, PINK) << std::endl;
+
+    double key_val = 0;
+    for (int i = 0; i < 4; i++) {
+        key_val += (double)found_key.limbs[i] * std::pow(2.0, i * 64);
+    }
+
+    double range_start = std::pow(2.0, key_range - 1);
+    double range_end = std::pow(2.0, key_range);
+    double relative_pos = (key_val - range_start) / (range_end - range_start);
+    double percentage = relative_pos * 100.0;
+
+    std::string healthK = kFactor < 2 ? " - \033[92mStatistics Luck!\033[0m" : " - \033[91mStatistical Bad Luck!\033[0m";
+    std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
+    std::cout << CYAN << "[K-Factor] : " << RESET << PINK << std::fixed << std::setprecision(4) << (double)kFactor << healthK << RESET << std::endl;
+    std::cout << CYAN << "[Total OPS]: " << RESET << PINK << ops << RESET << std::endl;
+
+    delete[] preCompG;
+    delete[] preCompGphi;
+    delete[] preCompH;
+    delete[] preCompHphi;
+    delete[] jacNorm;
+    delete[] jacNormH;
+    delete[] jacEndo;
+    delete[] jacEndoH;
+    return 0;
+}
+*/
 
 int main(int argc, char* argv[]) {
     std::string pub_key_hex;
@@ -1404,141 +1596,3 @@ std::cout << BLUE << "----------------------------------------------------------
 
     return 0;
 }
-
-/*
-int main(int argc, char* argv[]) {
-    std::string pub_key_hex;
-    int key_range;
-    int walkers;
-    int dp = -1;
-    std::string snapoint_path;
-
-    if (argc == 1) {
-        std::cout << "The Parameters Cannot Be Empty!" << std::endl;
-        return 1;
-    }
-
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-
-        if (arg == "--pubkey" && i + 1 < argc) {
-            pub_key_hex = argv[++i];
-        } else if (arg == "--keyrange" && i + 1 < argc) {
-            key_range = std::stoi(argv[++i]);
-        } else if (arg == "--walkers" && i + 1 < argc) {
-            walkers = std::stoi(argv[++i]);
-        } else if (arg == "--dp" && i + 1 < argc) {
-            dp = std::stoi(argv[++i]);
-        }
-          else if (arg == "--snaptime" && i + 1 < argc) {
-            snaptime_sec = std::stoi(argv[++i]);
-        }
-          else if (arg == "--t" && i + 1 < argc) {
-            cores = std::stoi(argv[++i]);
-        }
-        else {
-            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
-            std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
-            << GREEN << "*" << RESET << " --pubkey        => Compressed Public Key        <hex> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --keyrange      => Key Range Bits               <int> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --walkers       => Number Of Walkers            <int> ("<< RED << "*" << RESET << "Required)\n"
-            << GREEN << "*" << RESET << " --dp            => Distinguished Points Bits    <int> ("<< GREEN << "*" << RESET << "Optional)\n"
-            << GREEN << "*" << RESET << " --snaptime      => Snapoints Seconds            <int> 0 disables periodic saves ("<< GREEN << "*" << RESET << "Optional)\n"
-            << GREEN << "*" << RESET << " --t             => Work Threads                 <int> ("<< GREEN << "*" << RESET << "Optional)\n";
-            std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
-            return 1;
-        }
-    }
-
-    if (pub_key_hex.length() != 66) {
-        std::cerr << RED << "[ERROR] The Compressed Public Key Must Be Exactly 66 Characters Long, Prefix 02/03 + 64 Hex." << RESET << std::endl;
-        std::cerr << "Current Length: " << pub_key_hex.length() << std::endl;
-        return 1;
-    }
-
-    std::string prefix = pub_key_hex.substr(0, 2);
-    if (prefix != "02" && prefix != "03") {
-        std::cerr << RED << "[ERROR] Unusual Compressed Key Prefix: " << prefix <<", Expected: 02/03." << RESET << std::endl;
-        std::cerr << "Prefix Entered: " << prefix << std::endl;
-        return 1;
-    }
-
-    if (key_range < 1 || key_range > 256) {
-        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (1 - 256)." << RESET << std::endl;
-        std::cerr << "Value Entered: " << key_range << std::endl;
-        return 1;
-    }
-
-    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
-    std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
-    if (dp <= 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
-        std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
-    }
-
-    if (snapoint_path.empty()) {
-        snapoint_path = pub_key_hex + ".saved";
-    }
-
-    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
-    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
-    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
-    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snapoints File: " << RESET << CYAN << snapoint_path << RESET << std::endl;
-    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snaptime Interval: " << RESET << PINK << snaptime_sec << RESET << GREEN << "s" << RESET << std::endl;
-    uint64_t max_throughput = cores * 512ULL;
-    if (walkers != max_throughput) {
-        std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, Maximum Throughput Reached At: ~" << RESET << PINK << max_throughput << RESET << "." << std::endl;
-    }
-    std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
-
-    init_secp256k1(key_range);
-    uint256_t found_key = prho(pub_key_hex, key_range, walkers, dp, snapoint_path, snaptime_sec);
-
-    std::cout << GREEN << "[SUCCESS!] " << RESET << "Collision Found!" << std::endl;
-
-    unsigned char test_pub[33];
-    auto target_pubkey = hex_to_bytes(pub_key_hex);
-    generatePublicKey(preCompG, preCompGphi, test_pub, found_key.limbs, windowSize);
-
-    if (memcmp(test_pub, target_pubkey.data(), 33) != 0) {
-        std::cout << RED << "[ERROR!] Incorrect Public Key: " << RESET;
-        for (int i = 0; i < 33; i++) printf("%02x", test_pub[i]);
-        std::cout << std::dec << std::endl;
-    }
-    else
-    {
-        std::cout << GREEN << "[SUCCESS!] " << RESET << "Public Key Match: " << PINK;
-        for (int i = 0; i < 33; i++) printf("%02x", test_pub[i]);
-        std::cout << RESET << std::dec << std::endl;
-    }
-
-    save_key(pub_key_hex, found_key);
-    std::cout << ORANGE << "[WIF Key]: " << CYAN << HexToWif(uint256_to_hex(found_key)) << RESET << std::endl;
-    std::cout << GREEN << "[Private Key]: " << RESET << gradient_zeros(uint256_to_hex(found_key), DARK_PINK, PINK) << std::endl;
-
-    double key_val = 0;
-    for (int i = 0; i < 4; i++) {
-        key_val += (double)found_key.limbs[i] * std::pow(2.0, i * 64);
-    }
-
-    double range_start = std::pow(2.0, key_range - 1);
-    double range_end = std::pow(2.0, key_range);
-    double relative_pos = (key_val - range_start) / (range_end - range_start);
-    double percentage = relative_pos * 100.0;
-
-    std::string healthK = kFactor < 2 ? " - \033[92mStatistics Luck!\033[0m" : " - \033[91mStatistical Bad Luck!\033[0m";
-    std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
-    std::cout << CYAN << "[K-Factor] : " << RESET << PINK << std::fixed << std::setprecision(4) << (double)kFactor << healthK << RESET << std::endl;
-    std::cout << CYAN << "[Total OPS]: " << RESET << PINK << ops << RESET << std::endl;
-
-    delete[] preCompG;
-    delete[] preCompGphi;
-    delete[] preCompH;
-    delete[] preCompHphi;
-    delete[] jacNorm;
-    delete[] jacNormH;
-    delete[] jacEndo;
-    delete[] jacEndoH;
-    return 0;
-}
-*/
