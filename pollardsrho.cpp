@@ -1142,19 +1142,23 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                                 uint256_t da_sum = mod_add_N(w->a, found_dp.a);
                                 uint256_t db_sum = mod_add_N(w->b, found_dp.b);
                                 if (!scalarIsZero(db_sum.limbs)) {
-                                    uint256_t inv_db_sum = modinv(db_sum, N);
-                                    uint64_t res_k[4];
-                                    memcpy(res_k, da_sum.limbs, 32);
-                                    scalarNeg(res_k, res_k);
+    uint256_t inv_db_sum = modinv(db_sum, N);
 
-                                    uint64_t neg_k[4];
-                                    scalarNeg(neg_k, res_k);
+    uint64_t neg_da[4];
+    memcpy(neg_da, da_sum.limbs, 32);
+    scalarNeg(neg_da, neg_da);
 
-                                    if (test_key(res_k)) solved = true;
-                                    if (!solved) {
-                                        if (test_key(neg_k)) solved = true;
-                                    }
-                                }
+    uint64_t res_k[4];
+    scalarMul(res_k, neg_da, inv_db_sum.limbs);
+
+    uint64_t neg_k[4];
+    scalarNeg(neg_k, res_k);
+
+    if (test_key(res_k)) solved = true;
+    if (!solved) {
+        if (test_key(neg_k)) solved = true;
+    }
+}
                             }
                             if (solved) {
                                 search_in_progress.store(false, std::memory_order_release);
