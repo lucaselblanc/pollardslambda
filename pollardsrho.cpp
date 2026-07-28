@@ -456,23 +456,6 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
     return res;
 }
 
-uint256_t mod_neg_N(const uint256_t& a) {
-    bool is_zero = (a.limbs[0] | a.limbs[1] | a.limbs[2] | a.limbs[3]) == 0;
-    if (is_zero) return a;
-    uint256_t res;
-    uint64_t borrow = 0;
-    for (int i = 0; i < 4; i++) {
-        uint64_t diff = N.limbs[i] - a.limbs[i] - borrow;
-        borrow = (N.limbs[i] < a.limbs[i]) || (borrow && N.limbs[i] == a.limbs[i]);
-        res.limbs[i] = diff;
-    }
-    return res;
-}
-
-uint256_t mod_sub_N(const uint256_t& a, const uint256_t& b) {
-    return mod_add_N(a, mod_neg_N(b));
-}
-
 void getfcw(int key_range) {
     int w = 4;
     double exp_steps = std::pow(2, key_range / 2.0);
@@ -1142,23 +1125,23 @@ uint256_t prho(std::string target_pubkey_hex, int key_range, int WALKERS, int DP
                                 uint256_t da_sum = mod_add_N(w->a, found_dp.a);
                                 uint256_t db_sum = mod_add_N(w->b, found_dp.b);
                                 if (!scalarIsZero(db_sum.limbs)) {
-    uint256_t inv_db_sum = modinv(db_sum, N);
+                                    uint256_t inv_db_sum = modinv(db_sum, N);
 
-    uint64_t neg_da[4];
-    memcpy(neg_da, da_sum.limbs, 32);
-    scalarNeg(neg_da, neg_da);
+                                    uint64_t neg_da[4];
+                                    memcpy(neg_da, da_sum.limbs, 32);
+                                    scalarNeg(neg_da, neg_da);
 
-    uint64_t res_k[4];
-    scalarMul(res_k, neg_da, inv_db_sum.limbs);
+                                    uint64_t res_k[4];
+                                    scalarMul(res_k, neg_da, inv_db_sum.limbs);
 
-    uint64_t neg_k[4];
-    scalarNeg(neg_k, res_k);
+                                    uint64_t neg_k[4];
+                                    scalarNeg(neg_k, res_k);
 
-    if (test_key(res_k)) solved = true;
-    if (!solved) {
-        if (test_key(neg_k)) solved = true;
-    }
-}
+                                    if (test_key(res_k)) solved = true;
+                                    if (!solved) {
+                                        if (test_key(neg_k)) solved = true;
+                                    }
+                                }
                             }
                             if (solved) {
                                 search_in_progress.store(false, std::memory_order_release);
