@@ -171,6 +171,15 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 
  The expected time complexity of Pollard's Rho Lambda algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k) through an artificial cyclic subgroup, keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
 
+## Walker Architecture
+
+Each walker stores its current elliptic curve position and scalar state.
+
+Multiple independent walkers explore different trajectories
+simultaneously.
+
+This design enables large-scale CPU parallelization.
+
 ## Negation Map
 
 The implementation applies elliptic curve negation symmetry.
@@ -190,7 +199,7 @@ approximately:
  The theoretical average expected for the Pollard's Lambda (Kangaroo) variant, as outlined in the paper P. C. van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications, is ```E(ops) ≈ 2.0✓W```.
  This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 2.0.
 
- ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 2.0. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S convergences, the architecture fully capitalizes on these optimal drops when they occur.
+ ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 2.0. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S jump. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S jumps convergences, the architecture fully capitalizes on these optimal drops when they occur.
 
 ##Academic References:
 
