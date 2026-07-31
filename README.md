@@ -37,7 +37,7 @@
 
  This repository contains a high-performance implementation of Pollard’s Lambda algorithm for solving the Elliptic Curve Discrete Logarithm Problem (ECDLP) on the secp256k1 curve.
 
-#### Pollard's Rho Lambda (ρλ)
+#### Pollard's Lambda (ρλ)
 
  The algorithm uses parallel pseudo-random walks based on an R-adding
 walk construction.
