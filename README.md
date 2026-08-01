@@ -9,8 +9,6 @@
 
 [Description](https://github.com/lucaselblanc/pollardslambda/tree/main?tab=readme-ov-file#description)
 
-[Algorithm Version](https://github.com/lucaselblanc/pollardslambda/tree/main#pollards-lambda-%CF%81%CE%BB)
-
 [Benchmark](https://github.com/lucaselblanc/pollardslambda/tree/main#benchmark-tpu-v5e-8)
 
 [Technical Features](https://github.com/lucaselblanc/pollardslambda/tree/main#technical-features)
