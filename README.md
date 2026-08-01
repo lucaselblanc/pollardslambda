@@ -125,15 +125,9 @@ Lower-than-average k-factor values may still occur due to the statistical nature
  The entire search state: walker positions, scalar coefficients, and the
 distinguished-point table, can be saved to disk and restored exactly where it left off. Saves are written atomically via a PID-namespaced temporary file promoted by a single `rename(2)`, with `fsync` on both the file and its parent directory before commit, guaranteeing full recovery even after a hard power loss. Every snapshot carries an integrity checksum and is validated against the current run parameters before any state is touched, so neither corruption nor a configuration mismatch can produce a silent incorrect resume.
 
-#### Pre-Computed Points ```windowSize``` in L2/L3 Caches
+#### Pre-Computed Points ```windowSize``` in L1/L2/L3 Caches
 
- The step window is adjusted according to cache behavior.
-
-Small searches benefit from larger entropy tables.
-
-Large searches prioritize lower latency cache access.
-
-The objective is balancing entropy and memory locality.
+ The step window is dynamically adjusted according to the processor's cache behavior. While small searches benefit from larger entropy tables, large searches prioritize lower latency cache access, making the ultimate objective to perfectly balance step entropy and memory locality.
 
 #### Distinguished Points (DP)
 
@@ -151,7 +145,7 @@ Fewer DP bits:
 
 #### Delay Of Distinguished Points
 
- When a walker begins traversing a path already explored by another walker, a collision will be delayed if the distinguished points filter condition is not met for both walkers. The delay will be overcome after the distinct points are recorded in the dp table. The higher the dp value, the greater the delay for a collision to be detected and recorded by the hashmap. To mitigate this, it would be necessary to disable the dp filter, but this would cause excessive RAM usage and would not be worth the effort, and would ruin the performance. This delay is a necessary evil when using distinct points.
+ When a walker begins traversing a path already explored by another walker, a collision will be delayed if the distinguished points filter condition is not met for both walkers. The delay will be overcome after the distinct points are recorded in the dp table. The higher the dp value, the greater the delay for a collision to be detected and recorded by the hashmap, this inherent delay directly affects the algorithm's empirical k-factor. While the actual path convergence is dictated by the birthday paradox, the delayed detection forces walkers to perform additional operations before the collision is logged. Since the k-factor measures the total steps taken against the theoretical expectation, this DP overhead naturally inflates the final result.. To mitigate this, it would be necessary to disable the dp filter, but this would cause excessive RAM usage and would not be worth the effort, and would ruin the performance. This delay is a necessary evil when using distinct points.
 
 Theoretical Calculus:
 
@@ -198,7 +192,7 @@ $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 
  The theoretical average expected for the Pollard's Lambda (Kangaroo) variant, as outlined in the paper P. C. van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications, is ```E(ops) ≈ 2.0✓W```.
 
- This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 2.0.
+ This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 1.0.
 
  ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 2.0. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S jump. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S jumps convergences, the architecture fully capitalizes on these optimal drops when they occur.
 
@@ -224,7 +218,7 @@ SECG - SEC 2 (2010): Recommended Elliptic Curve Domain Parameters (secp256k1 spe
 
 1. Clone this repository:
     ```bash
-    ~/$ git clone https://github.com/lucaselblanc/pollardsrho.git
+    ~/$ git clone https://github.com/lucaselblanc/pollardslambda.git
     ```
 
 2. Install the necessary libraries:
@@ -237,30 +231,31 @@ SECG - SEC 2 (2010): Recommended Elliptic Curve Domain Parameters (secp256k1 spe
 
 3. Compile the project:
     ```bash
-    ~/$cd pollardsrho
+    ~/$cd pollardslambda
     ```
 
     ```bash
-    ~/pollardsrho$ make
+    ~/pollardslambda$ make
     ```
 
 4. Run the program:
     ```bash
-    ~/pollardsrho$ ./pollardsrho <compressed public key(hex)> <key range(int)> <walkers(int)> <OPTIONAL DP(int)> <OPTIONAL Threads(int)> <OPTIONAL snaptime(int)>
+    ~/pollardslambda$ ./lambda <compressed public key(hex)> <key range(int)> <walkers(int)> <OPTIONAL DP(int)> <OPTIONAL Threads(int)> <OPTIONAL snaptime(int)>
     ```
 
     Replace `<compressed public key>` with the point \(G\) on the secp256k1 curve multiplied by your private key value, and `<key range>` with the size of the search interval for \(k\).
 
     Example usage:
     ```bash
-    ~/pollardsrho$ ./pollardsrho --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12 --t 8 --snaptime 15
+    ~/pollardslambda$ ./lambda --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12 --t 8 --snaptime 15
     ```
 
 ## Commands
 
  The random walk begins using the public point of the compressed public key as the parameter H, the target private key range for initializing the initial probability space, and the optional distinguished points parameter, which will be calculated automatically if not defined:
+
 ```bash
-~/pollardsrho$ ./pollardsrho <compressed public key> <key range> <walkers> <dp bits> <threads> <snaptime>
+~/pollardslambda$ ./lambda <compressed public key> <key range> <walkers> <dp bits> <threads> <snaptime>
 ```
 
 --pubkey: The public key derived from the private key (discrete logarithm k) G = Q.
@@ -284,7 +279,7 @@ SECG - SEC 2 (2010): Recommended Elliptic Curve Domain Parameters (secp256k1 spe
 
 Contributions are welcome! Feel free to open issues or submit pull requests.
 
-## Add a Star: <a href="https://github.com/lucaselblanc/pollardsrho/stargazers"><img src="https://img.shields.io/github/stars/lucaselblanc/pollardsrho?style=flat-square" alt="GitHub stars" style="vertical-align: bottom; width: 65px; height: auto;"></a>
+## Add a Star: <a href="https://github.com/lucaselblanc/pollardslambda/stargazers"><img src="https://img.shields.io/github/stars/lucaselblanc/pollardslambda?style=flat-square" alt="GitHub stars" style="vertical-align: bottom; width: 65px; height: auto;"></a>
 
 ## Donations: bc1pxqwuyfwvttjgttfmpt0gk0n7yzw3k7cyzzpc3rsc4lumr8ywythsj0rrhd
 
@@ -302,11 +297,11 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
     <img src="https://github-stats-alpha.vercel.app/api?username=lucaselblanc&cc=22272e&tc=37BCF6&ic=fff&bc=0000">
 </a>
 
-- 🔭 I’m currently working on [Data Leak Search](https://play.google.com/store/apps/details?id=com.NoClipStudio.DataBaseSearch)
+- 🔭 I’m currently working on [Pollard's Lambda Algorithm](https://github.com/lucaselblanc/pollardslambda/)
 
 - 🚀 I’m looking to collaborate on: [Cyber-Security](https://play.google.com/store/apps/details?id=com.hashsuite.droid)
 
-- 📝 I regularly read: [https://github.com/bitcoin-core/secp256k1](https://github.com/bitcoin-core/secp256k1)
+- 📝 I regularly read: [Monte Carlo methods for index computation (mod p)](https://www.ams.org/journals/mcom/1978-32-143/S0025-5718-1978-0491431-9/S0025-5718-1978-0491431-9.pdf)
 
 - 📄 Know about my experiences: [https://www.linkedin.com/in/lucas-leblanc-215594208](https://www.linkedin.com/in/lucas-leblanc-215594208)
 
