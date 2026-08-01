@@ -77,9 +77,12 @@ modular equation allows recovery through modular inversion.
 
 ## Average k-Factor
 
-According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization predicted in the paper: [Monte Carlo methods for index computation (mod p)](https://www.ams.org/journals/mcom/1978-32-143/S0025-5718-1978-0491431-9/S0025-5718-1978-0491431-9.pdf), the expected constant for the factor k is:
+According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization predicted in the paper: [Using Equivalence Classes to Accelerate Solving
+the Discrete Logarithm Problem in a Short
+Interval (Steven D. Galbraith & Andrew S. Ruprai)
+](https://eprint.iacr.org/2010/615.pdf), the expected constant for the factor k is:
 
-$k = \sqrt{\frac{\pi}{2}} \approx 1.2533$
+$E[\text{ops}] \approx 1.36 \sqrt{W}$
 
 This value represents the theoretical efficiency boundary predicted for parallel collision search when elliptic curve symmetry reduction is applied through the Negation Map.
 
