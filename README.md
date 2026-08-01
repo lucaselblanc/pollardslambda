@@ -169,7 +169,7 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 
 ## Algorithm Complexity
 
- The expected time complexity of Pollard's Rho Lambda algorithm for elliptic curves is O(√n), where n is the order of the group, in this implementation, the probability distribution in the steps is restricted to O(√k) through an artificial cyclic subgroup, keeps the probabilistic window restricted to the range. Given secp256k1, this translates to approximately O(√range), as predicted by the birthday paradox for random walks over a finite group.
+ The expected time complexity of Pollard's Lambda algorithm for elliptic curves is $O(\sqrt{w})$, where $w$ is the width of the search interval. In this implementation, the probability distribution in the steps is restricted to $O\left(\sqrt{\frac{K}{2}}\right)$ by strictly bounding the random walk step sizes, which keeps the probabilistic window confined to the target range. Given secp256k1 and the inclusion of the Negation Map optimization, this translates to approximately $O\left(\sqrt{\frac{\text{range}}{2}}\right)$, as predicted by the birthday paradox for bounded random walks over a finite group.
 
 ## Walker Architecture
 
@@ -192,16 +192,17 @@ Equivalent points can be treated as the same state during the search.
 The expected improvement changes the effective complexity to
 approximately:
 
-    O(√(K/2))
+    $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 
 #### Average k-Factor
 
  The theoretical average expected for the Pollard's Lambda (Kangaroo) variant, as outlined in the paper P. C. van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications, is ```E(ops) ≈ 2.0✓W```.
+
  This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 2.0.
 
  ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 2.0. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S jump. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S jumps convergences, the architecture fully capitalizes on these optimal drops when they occur.
 
-##Academic References:
+## Academic References:
 
 J. M. Pollard (1978) - Monte Carlo methods for index computation (mod p).
 
