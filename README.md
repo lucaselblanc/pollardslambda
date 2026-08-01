@@ -173,8 +173,8 @@ Each walker stores its current elliptic curve position and scalar state. Multipl
 
 The implementation applies elliptic curve negation symmetry (Equivalence Class Size 2).
 
-    P = (x,y)
-    -P = (x,-y mod p)
+$$P = (x, y)$$
+$$-P = (x, -y \bmod p)$$
 
 Equivalent points can be treated as the same state during the search.
 
