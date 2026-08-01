@@ -1,9 +1,9 @@
-TARGET    := pollardsrho
+TARGET    := lambda
 CXX       := g++
 
 LDLIBS    := -lpthread -ldl -lrt -lcrypto
 
-SRC_CPP   := modinv.cpp pollardsrho.cpp secp256k1.cpp
+SRC_CPP   := modinv.cpp lambda.cpp secp256k1.cpp
 OBJ_CPP   := $(SRC_CPP:.cpp=.o)
 OBJ       := $(OBJ_CPP)
 
