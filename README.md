@@ -42,7 +42,7 @@ walk construction.
 
 Each walker maintains:
 
-    R = a * G + b * H
+$R = a \cdot G + b \cdot H$
 
 `G` is the generator point.
 
@@ -79,13 +79,13 @@ modular equation allows recovery through modular inversion.
 
 According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization, the expected upper performance limit is:
 
-$$k = \sqrt{\frac{\pi}{2}} \approx 1.2533$$
+$k = \sqrt{\frac{\pi}{2}} \approx 1.2533$
 
 This value represents the theoretical efficiency boundary predicted for parallel collision search when elliptic curve symmetry reduction is applied through the Negation Map.
 
 The implementation achieves an empirical average k-factor of approximately:
 
-k ≈ 1.06
+$k ≈ 1.06$
 
 This value was obtained through thousands of independent benchmark samples, measuring the average number of operations required to solve interval-restricted searches.
 
