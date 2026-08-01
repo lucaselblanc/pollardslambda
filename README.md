@@ -194,15 +194,17 @@ $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 
 ## Academic References:
 
-J. M. Pollard (1978) - Monte Carlo methods for index computation (mod p).
+J. M. Pollard - Monte Carlo methods for index computation (mod p) (1978).
 
-P. C. Van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications.
-                                                                                
-Peter L. Montgomery (1987) - Speeding the Pollard and Elliptic Curve Methods of Factorization.
+Richard P. Brent - An improved Monte Carlo factorization algorithm (1980).
 
-Richard P. Brent (1980) - An improved Monte Carlo factorization algorithm.
+Peter L. Montgomery - Speeding the Pollard and Elliptic Curve Methods of Factorization (1987).
+
+P. C. Van Oorschot & M. J. Wiener - Parallel Collision Search with Cryptanalytic Applications (1999).
+
+Gaudry & Schost - A low-memory parallel version of Matsuo, Chao and Tsujii's algorithm (2004).
                                       
-SECG - SEC 2 (2010): Recommended Elliptic Curve Domain Parameters (secp256k1 specification).
+SECG - SEC 2: Recommended Elliptic Curve Domain Parameters (secp256k1 specification) (2010).
 
 ## Prerequisites
 
