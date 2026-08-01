@@ -5,29 +5,29 @@
 
 ## Fast Links:
 
-[Main Index](https://github.com/lucaselblanc/pollardsrho/tree/main?tab=readme-ov-file#pollards-rho-lambda-algorithm-for-secp256k1-curve-%CF%81%CE%BB)
+[Main Index](https://github.com/lucaselblanc/pollardslambda/tree/main?tab=readme-ov-file#pollards-lambda-algorithm-for-secp256k1-curve-%CF%81%CE%BB)
 
-[Description](https://github.com/lucaselblanc/pollardsrho/tree/main?tab=readme-ov-file#description)
+[Description](https://github.com/lucaselblanc/pollardslambda/tree/main?tab=readme-ov-file#description)
 
-[Algorithm Version](https://github.com/lucaselblanc/pollardsrho/tree/main#pollards-rho-lambda-%CF%81%CE%BB)
+[Algorithm Version](https://github.com/lucaselblanc/pollardslambda/tree/main#pollards-rho-lambda-%CF%81%CE%BB)
 
-[Benchmark](https://github.com/lucaselblanc/pollardsrho/tree/main#benchmark-tpu-v5e-8)
+[Benchmark](https://github.com/lucaselblanc/pollardslambda/tree/main#benchmark-tpu-v5e-8)
 
-[Technical Features](https://github.com/lucaselblanc/pollardsrho/tree/main#technical-features)
+[Technical Features](https://github.com/lucaselblanc/pollardslambda/tree/main#technical-features)
 
-[Distinguished Points](https://github.com/lucaselblanc/pollardsrho/tree/main#distinguished-points-dp)
+[Distinguished Points](https://github.com/lucaselblanc/pollardslambda/tree/main#distinguished-points-dp)
 
-[Delay Of Distinguished Points](https://github.com/lucaselblanc/pollardsrho/tree/main#delay-of-distinguished-points)
+[Delay Of Distinguished Points](https://github.com/lucaselblanc/pollardslambda/tree/main#delay-of-distinguished-points)
 
-[Algorithm Complexity](https://github.com/lucaselblanc/pollardsrho/tree/main#algorithm-complexity)
+[Algorithm Complexity](https://github.com/lucaselblanc/pollardslambda/tree/main#algorithm-complexity)
 
-[Prerequisites](https://github.com/lucaselblanc/pollardsrho/tree/main#prerequisites)
+[Prerequisites](https://github.com/lucaselblanc/pollardslambda/tree/main#prerequisites)
 
-[Installation](https://github.com/lucaselblanc/pollardsrho/tree/main#installation)
+[Installation](https://github.com/lucaselblanc/pollardslambda/tree/main#installation)
 
-[Commands](https://github.com/lucaselblanc/pollardsrho/tree/main#commands)
+[Commands](https://github.com/lucaselblanc/pollardslambda/tree/main#commands)
 
-[External Libraries Used](https://github.com/lucaselblanc/pollardsrho/tree/main#external-libraries-used)
+[External Libraries Used](https://github.com/lucaselblanc/pollardslambda/tree/main#external-libraries-used)
 
 ## Notice
 
