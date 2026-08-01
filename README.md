@@ -192,7 +192,7 @@ Equivalent points can be treated as the same state during the search.
 The expected improvement changes the effective complexity to
 approximately:
 
-    $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
+$O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 
 #### Average k-Factor
 
