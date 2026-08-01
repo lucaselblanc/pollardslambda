@@ -167,16 +167,11 @@ int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(
 
 ## Walker Architecture
 
-Each walker stores its current elliptic curve position and scalar state.
-
-Multiple independent walkers explore different trajectories
-simultaneously.
-
-This design enables large-scale CPU parallelization.
+Each walker stores its current elliptic curve position and scalar state. Multiple independent walkers explore different trajectories simultaneously. This design enables large-scale CPU parallelization.
 
 ## Negation Map
 
-The implementation applies elliptic curve negation symmetry.
+The implementation applies elliptic curve negation symmetry (Equivalence Class Size 2).
 
     P = (x,y)
     -P = (x,-y mod p)
