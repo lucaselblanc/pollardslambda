@@ -77,9 +77,9 @@ modular equation allows recovery through modular inversion.
 
 ## Average k-Factor
 
-According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization, the expected upper performance limit is approximately:
+According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization, the expected upper performance limit is:
 
-k ≈ 1.25
+$$k = \sqrt{\frac{\pi}{2}} \approx 1.2533$$
 
 This value represents the theoretical efficiency boundary predicted for parallel collision search when elliptic curve symmetry reduction is applied through the Negation Map.
 
