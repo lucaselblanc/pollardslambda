@@ -77,12 +77,13 @@ modular equation allows recovery through modular inversion.
 
 ## Average k-Factor
 
-According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization predicted in the paper: [Using Equivalence Classes to Accelerate Solving
-the Discrete Logarithm Problem in a Short
-Interval (Steven D. Galbraith & Andrew S. Ruprai)
-](https://eprint.iacr.org/2010/615.pdf), the expected constant for the factor k is:
+The formal equation by van Oorschot and Wiener (1999) on paper: [P. C. Van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications](https://people.scs.carleton.ca/~paulv/papers/JoC97.pdf) for the expected total time of the Lambda method operating on a restricted interval is:
 
-$E[\text{ops}] \approx 1.36 \sqrt{W}$
+$T_\lambda = \left( \frac{2 \sqrt{b}}{m} + \frac{1}{\theta} \right) t$
+
+The expected constant for the factor k is:
+
+$E[\text{ops}] \approx 1.2533 \sqrt{W}$
 
 This value represents the theoretical efficiency boundary predicted for parallel collision search when elliptic curve symmetry reduction is applied through the Negation Map.
 
