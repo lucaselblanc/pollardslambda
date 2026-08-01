@@ -77,7 +77,7 @@ modular equation allows recovery through modular inversion.
 
 ## Average k-Factor
 
-According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization, the expected upper performance limit is:
+According to the theoretical analysis of Pollard's Lambda with the Negation Map optimization predicted in the paper: [Monte Carlo methods for index computation (mod p)](https://www.ams.org/journals/mcom/1978-32-143/S0025-5718-1978-0491431-9/S0025-5718-1978-0491431-9.pdf), the expected constant for the factor k is:
 
 $k = \sqrt{\frac{\pi}{2}} \approx 1.2533$
 
@@ -183,10 +183,6 @@ The expected improvement changes the effective complexity to
 approximately:
 
 $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
-
-#### Average k-Factor
-
- The theoretical average expected for the Pollard's Lambda (Kangaroo) variant, as outlined in the paper P. C. van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications, is ```E(ops) ≈ 2.0✓W```.
 
  This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 1.0.
 
