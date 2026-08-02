@@ -1215,7 +1215,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     if(snapoint_thread.joinable()) snapoint_thread.join();
     if(progress_thread.joinable()) progress_thread.join();
 
-    { ops = total_iters.load(); sqrtM = powl(2.0L, key_range / 2.0L); kFactor = (long double)ops / sqrtM; }
+    { ops = total_iters.load(); sqrtM = powl(2.0L, (key_range - 1) / 2.0L); kFactor = (long double)ops / sqrtM; }
 
     for (auto& w : walkers_state) {
         if (w.buffers != nullptr) {
