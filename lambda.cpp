@@ -5,23 +5,6 @@
 * file COPYING or https://www.opensource.org/licenses/mit-license.php.                                     *
 ************************************************************************************************************/
 
-/************************************************ PAPERS ***************************************************
-* J. M. Pollard (1978) - Monte Carlo methods for index computation (mod p):                                *
-* https://www.ams.org/journals/mcom/1978-32-143/S0025-5718-1978-0491431-9/S0025-5718-1978-0491431-9.pdf    *
-*                                                                                                          *
-* P. C. Van Oorschot & M. J. Wiener (1999) - Parallel Collision Search with Cryptanalytic Applications:    *
-* https://people.scs.carleton.ca/~paulv/papers/JoC97.pdf                                                   *
-*                                                                                                          *
-* Peter L. Montgomery (1987) - Speeding the Pollard and Elliptic Curve Methods of Factorization:           *
-* https://www.ams.org/journals/mcom/1987-48-177/S0025-5718-1987-0866113-7/S0025-5718-1987-0866113-7.pdf    *
-*                                                                                                          *
-* Richard P. Brent (1980) - An improved Monte Carlo factorization algorithm:                               *
-* https://maths-people.anu.edu.au/~brent/pd/rpb051i.pdf                                                    *
-*                                                                                                          *
-* SECG - SEC 2 (2010): Recommended Elliptic Curve Domain Parameters (secp256k1 specification):             *
-* https://www.secg.org/sec2-v2.pdf                                                                         *
-************************************************************************************************************/
-
 /*******************************************
 * Pollard's Lambda Algorithm for SECP256K1 *
 * Written by Lucas Leblanc                 *
