@@ -316,9 +316,15 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 <br>
 My Github Stats
 
-![](http://github-profile-summary-cards.vercel.app/api/cards/profile-details?username=lucaselblanc&theme=dracula) 
-![](http://github-profile-summary-cards.vercel.app/api/cards/repos-per-language?username=lucaselblanc&theme=dracula) 
-![](http://github-profile-summary-cards.vercel.app/api/cards/most-commit-language?username=lucaselblanc&theme=dracula)
+## GitHub Stats
+
+<img height="180em" src="https://github-readme-stats.vercel.app/api?username=lucaselblanc&show_icons=true&theme=dracula"/>
+
+<img height="180em" src="https://github-readme-stats.vercel.app/api/top-langs/?username=lucaselblanc&layout=compact&theme=dracula"/>
+
+<img src="https://streak-stats.demolab.com?user=lucaselblanc&theme=dracula"/>
+
+<img src="https://github-readme-activity-graph.vercel.app/graph?username=lucaselblanc&theme=dracula"/>
 
 <h3 align="left">Connect with me:</h3>
 <p align="left">
