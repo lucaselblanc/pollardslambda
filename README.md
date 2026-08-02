@@ -314,11 +314,10 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - 📄 Know about my experiences: [https://www.linkedin.com/in/lucas-leblanc-215594208](https://www.linkedin.com/in/lucas-leblanc-215594208)
 
 <br>
-My Github Stats
 
 ## GitHub Stats
 
-<img src="https://github-readme-activity-graph.vercel.app/graph?username=lucaselblanc&theme=dracula"/>
+<img src="https://streak-stats.demolab.com?user=lucaselblanc&theme=dracula"/>
 
 <h3 align="left">Connect with me:</h3>
 <p align="left">
