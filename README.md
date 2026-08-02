@@ -11,6 +11,8 @@
 
 [Benchmark](https://github.com/lucaselblanc/pollardslambda/tree/main#benchmark-tpu-v5e-8)
 
+[Average K Factor](https://github.com/lucaselblanc/pollardslambda/tree/main#average-k-factor)
+
 [Technical Features](https://github.com/lucaselblanc/pollardslambda/tree/main#technical-features)
 
 [Distinguished Points](https://github.com/lucaselblanc/pollardslambda/tree/main#distinguished-points-dp)
@@ -18,6 +20,10 @@
 [Delay Of Distinguished Points](https://github.com/lucaselblanc/pollardslambda/tree/main#delay-of-distinguished-points)
 
 [Algorithm Complexity](https://github.com/lucaselblanc/pollardslambda/tree/main#algorithm-complexity)
+
+[Negation Map](https://github.com/lucaselblanc/pollardslambda/tree/main#negation-map)
+
+[Academic Paper References](https://github.com/lucaselblanc/pollardslambda/tree/main#academic-references)
 
 [Prerequisites](https://github.com/lucaselblanc/pollardslambda/tree/main#prerequisites)
 
@@ -95,13 +101,13 @@ This value was obtained through thousands of independent benchmark samples, meas
 
 The observed k-factor is the result of the combined effect of multiple engineering optimizations:
 
-- Negation Map optimization.
-- Parallel collision search architecture.
-- Optimized random walk distribution.
-- Distinguished Points collision detection.
-- Cache-aware precomputed step windows.
-- Efficient walker synchronization.
-- Batch Jacobian-to-Affine conversion.
+-   Negation Map optimization.
+-   Parallel collision search architecture.
+-   Optimized random walk distribution.
+-   Distinguished Points collision detection.
+-   Cache-aware precomputed step windows.
+-   Efficient walker synchronization.
+-   Batch Jacobian-to-Affine conversion.
 
 Shows that the implementation operates below the theoretical average bound expected for the generic optimized Pollard's Lambda model, approaching practical optimal performance under real execution conditions.
 
@@ -188,11 +194,11 @@ approximately:
 
 $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 
- This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 1.0.
+ This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 1.2533.
 
- ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 2.0. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S jump. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S jumps convergences, the architecture fully capitalizes on these optimal drops when they occur.
+ ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 1.2533. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S jump. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S jumps convergences, the architecture fully capitalizes on these optimal drops when they occur.
 
-## Academic References:
+## Academic References
 
 [J. M. Pollard - Monte Carlo methods for index computation (mod p) (1978)](https://www.ams.org/journals/mcom/1978-32-143/S0025-5718-1978-0491431-9/S0025-5718-1978-0491431-9.pdf)
 
