@@ -101,13 +101,13 @@ This value was obtained through thousands of independent benchmark samples, meas
 
 The observed k-factor is the result of the combined effect of multiple engineering optimizations:
 
--   Negation Map optimization.
--   Parallel collision search architecture.
--   Optimized random walk distribution.
--   Distinguished Points collision detection.
--   Cache-aware precomputed step windows.
--   Efficient walker synchronization.
--   Batch Jacobian-to-Affine conversion.
+— Negation Map optimization.
+— Parallel collision search architecture.
+— Optimized random walk distribution.
+— Distinguished Points collision detection.
+— Cache-aware precomputed step windows.
+— Efficient walker synchronization.
+— Batch Jacobian-to-Affine conversion.
 
 Shows that the implementation operates below the theoretical average bound expected for the generic optimized Pollard's Lambda model, approaching practical optimal performance under real execution conditions.
 
@@ -115,12 +115,12 @@ Lower-than-average k-factor values may still occur due to the statistical nature
 
 ## Implementation Highlights
 
--   Multi-threaded walkers.
--   Cache-aware tables.
--   Batch inversion.
--   Snapshot recovery.
--   Distinguished Point system.
--   Negation Map optimization.
+— Multi-threaded walkers.
+— Cache-aware tables.
+— Batch inversion.
+— Snapshot recovery.
+— Distinguished Point system.
+— Negation Map optimization.
 
 ## Technical Features
 
@@ -145,13 +145,13 @@ distinguished-point table, can be saved to disk and restored exactly where it le
 
 More DP bits:
 
--   Lower RAM usage.
--   Slower detection.
+— Lower RAM usage.
+— Slower detection.
 
 Fewer DP bits:
 
--   Faster detection.
--   Higher RAM usage.
+— Faster detection.
+— Higher RAM usage.
 
 #### Delay Of Distinguished Points
 
