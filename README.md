@@ -194,17 +194,17 @@ $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 
 ## Academic References:
 
-J. M. Pollard - Monte Carlo methods for index computation (mod p) (1978).
+[J. M. Pollard - Monte Carlo methods for index computation (mod p) (1978)](https://www.ams.org/journals/mcom/1978-32-143/S0025-5718-1978-0491431-9/S0025-5718-1978-0491431-9.pdf)
 
-Richard P. Brent - An improved Monte Carlo factorization algorithm (1980).
+[Richard P. Brent - An improved Monte Carlo factorization algorithm (1980)](https://maths-people.anu.edu.au/~brent/pd/rpb051i.pdf)
 
-Peter L. Montgomery - Speeding the Pollard and Elliptic Curve Methods of Factorization (1987).
+[Peter L. Montgomery - Speeding the Pollard and Elliptic Curve Methods of Factorization (1987)](https://www.ams.org/journals/mcom/1987-48-177/S0025-5718-1987-0866113-7/S0025-5718-1987-0866113-7.pdf)
 
-P. C. Van Oorschot & M. J. Wiener - Parallel Collision Search with Cryptanalytic Applications (1999).
+[P. C. Van Oorschot & M. J. Wiener - Parallel Collision Search with Cryptanalytic Applications (1999)](https://people.scs.carleton.ca/~paulv/papers/JoC97.pdf)
 
-Gaudry & Schost - A low-memory parallel version of Matsuo, Chao and Tsujii's algorithm (2004).
+[Gaudry & Schost - A low-memory parallel version of Matsuo, Chao and Tsujii's algorithm (2004)](https://cs.uwaterloo.ca/~eschost/publications/ants.pdf)
                                       
-SECG - SEC 2: Recommended Elliptic Curve Domain Parameters (secp256k1 specification) (2010).
+[SECG - SEC 2: Recommended Elliptic Curve Domain Parameters (secp256k1 specification) (2010)](https://www.secg.org/sec2-v2.pdf)
 
 ## Prerequisites
 
