@@ -203,6 +203,10 @@ $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 [P. C. Van Oorschot & M. J. Wiener - Parallel Collision Search with Cryptanalytic Applications (1999)](https://people.scs.carleton.ca/~paulv/papers/JoC97.pdf)
 
 [Gaudry & Schost - A low-memory parallel version of Matsuo, Chao and Tsujii's algorithm (2004)](https://cs.uwaterloo.ca/~eschost/publications/ants.pdf)
+
+[Galbraith & Ruprai - Using Equivalence Classes to Accelerate Solving
+the Discrete Logarithm Problem in a Short
+Interval (2010)](https://eprint.iacr.org/2010/615.pdf)
                                       
 [SECG - SEC 2: Recommended Elliptic Curve Domain Parameters (secp256k1 specification) (2010)](https://www.secg.org/sec2-v2.pdf)
 
