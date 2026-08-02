@@ -45,8 +45,6 @@ struct WalkState {
     uint32_t walk_id;
     uint64_t snapshot_steps;
     uint64_t snapshot_x[4];
-    uint64_t prev_x1[4];
-    uint64_t prev_x2[4];
 };
 
 struct MurmurHash3 {
@@ -195,9 +193,7 @@ bool snapoint_walkers_state(
                 write_uint256(walker.b) &&
                 write_jacobian(walker.R) &&
                 write_value(walker.snapshot_steps) &&
-                write_bytes(walker.snapshot_x, sizeof(walker.snapshot_x)) &&
-                write_bytes(walker.prev_x1, sizeof(walker.prev_x1)) &&
-                write_bytes(walker.prev_x2, sizeof(walker.prev_x2)
+                write_bytes(walker.snapshot_x, sizeof(walker.snapshot_x)
             );
         }
 
@@ -311,9 +307,7 @@ bool snapoint_walkers_state(
             !read_uint256(walker.b) ||
             !read_jacobian(walker.R) ||
             !read_value(walker.snapshot_steps) ||
-            !read_bytes(walker.snapshot_x, sizeof(walker.snapshot_x)) ||
-            !read_bytes(walker.prev_x1, sizeof(walker.prev_x1)) ||
-            !read_bytes(walker.prev_x2, sizeof(walker.prev_x2))) {
+            !read_bytes(walker.snapshot_x, sizeof(walker.snapshot_x))) {
             return false;
         }
         if (walker.walk_id != i) return false;
@@ -709,6 +703,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     struct StepLocal { ECPointJacobian point; uint256_t a; uint256_t b; };
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(target_affine.x[0]);
+
     uint256_t stepSize = {};
     int actual_step_bit = (key_range / 2) + 3;
     stepSize.limbs[actual_step_bit / 64] = 1ULL << (actual_step_bit % 64);
@@ -802,8 +797,6 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
         w->snapshot_steps = 0;
         memset(w->snapshot_x, 0, 32);
-        memset(w->prev_x1, 0, 32);
-        memset(w->prev_x2, 0, 32);
 
         uint64_t a_arr[4];
         uint256_to_uint64_array(a_arr, w->a);
@@ -958,8 +951,6 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                 total_iters.fetch_add(local_count, std::memory_order_relaxed);
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-                    memcpy(w->prev_x2, w->prev_x1, 32);
-                    memcpy(w->prev_x1, aff_batch[i].x, 32);
                     uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
                     bool negate = aff_batch[i].y[0] & 1;
                     uint32_t cur_jmp_id = step_idx | (negate ? INV_FLAG : 0);
@@ -999,26 +990,13 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                             last_jmp_id[i] = 0xFFFFFFFFu;
                             w->snapshot_steps = 0;
                             memset(w->snapshot_x, 0xFF, 32);
-                            memset(w->prev_x1, 0xFE, 32);
-                            memset(w->prev_x2, 0xFD, 32);
                             continue;
                         }
                     }
 
-                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0 || memcmp(aff_batch[i].x, w->prev_x2, 32) == 0) {
-                        MurmurHash3 hasher;
-                        uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xABCDEFULL) % N_STEPS);
-                        ECPointJacobian escape_point = localStepTable[idx].point;
-                        pointAddJacobian(&w->R, &w->R, &escape_point);
-                        scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
-                        ECPointAffine aff_jump;
-                        jacobianToAffine(&aff_jump, &w->R);
-                        aff_batch[i] = aff_jump;
-                        last_jmp_id[i] = 0xFFFFFFFFu;
-                        w->snapshot_steps = 0;
-                        memset(w->snapshot_x, 0xFF, 32);
-                        memset(w->prev_x1, 0xFE, 32);
-                        memset(w->prev_x2, 0xFD, 32);
+                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0) {
+                        reset(w, w->walk_id % 2 == 0);
+                        jac_batch[i] = w->R;
                         total_cycles.fetch_add(1, std::memory_order_relaxed);
                         continue;
                     }
@@ -1353,7 +1331,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
-    if (dp <= 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
+    if (dp < 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
         dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
     }
