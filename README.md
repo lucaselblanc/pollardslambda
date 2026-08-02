@@ -318,12 +318,6 @@ My Github Stats
 
 ## GitHub Stats
 
-<img height="180em" src="https://github-readme-stats.vercel.app/api?username=lucaselblanc&show_icons=true&theme=dracula"/>
-
-<img height="180em" src="https://github-readme-stats.vercel.app/api/top-langs/?username=lucaselblanc&layout=compact&theme=dracula"/>
-
-<img src="https://streak-stats.demolab.com?user=lucaselblanc&theme=dracula"/>
-
 <img src="https://github-readme-activity-graph.vercel.app/graph?username=lucaselblanc&theme=dracula"/>
 
 <h3 align="left">Connect with me:</h3>
