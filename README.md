@@ -95,7 +95,7 @@ This value represents the theoretical efficiency boundary predicted for parallel
 
 The implementation achieves an empirical average k-factor of approximately:
 
-$k ≈ 1.06$
+$k ≈ 1.32$
 
 This value was obtained through thousands of independent benchmark samples, measuring the average number of operations required to solve interval-restricted searches.
 
