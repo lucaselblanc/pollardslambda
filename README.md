@@ -89,18 +89,18 @@ $T_\lambda = \left( \frac{2 \sqrt{b}}{m} + \frac{1}{\theta} \right) t$
 
 The expected constant for the factor k is:
 
-<details>
-<summary><strong> Note:</strong></summary>
-
-<sub><i>The project is under active development. The reported average k-factor reflects the algorithm's current state and should not be considered the final value for implementation.</i></sub>
-
-</details>
-
 $E[\text{ops}] \approx 1.2533 \sqrt{W}$
 
 This value represents the theoretical efficiency boundary predicted for parallel collision search when elliptic curve symmetry reduction is applied through the Negation Map.
 
-The implementation achieves an empirical average k-factor of approximately:
+The implementation achieves an empirical average k-factor:
+
+<details>
+<summary><strong>  Note:</strong></summary>
+
+<sub><i>The project is under active development. The reported average k-factor reflects the algorithm's current state and should not be considered the final value for implementation.</i></sub>
+
+</details>
 
 $k ≈ 1.252$
 
