@@ -705,8 +705,29 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    int actual_step_bit = (key_range / 2) + 3;
+    //int actual_step_bit = (key_range / 2) + 3;
+/*
+    int actual_step_bit = (key_range / 2) + 4;
     stepSize.limbs[actual_step_bit / 64] = 1ULL << (actual_step_bit % 64);
+*/
+
+    //double m = 5.656854249;
+    double m = 3.25; //beta
+    double sqrt_factor = (key_range % 2 != 0) ? 1.41421356237309504880168 : 1.0;
+    double max_mult = 2.0 * m * sqrt_factor;
+
+    int base_bit = key_range / 2;
+
+    for (int i = 15; i >= -48; i--) {
+        double power = std::pow(2.0, i);
+        if (max_mult >= power) {
+            max_mult -= power;
+            int target_bit = base_bit + i;
+            if (target_bit >= 0 && target_bit < 256) {
+                stepSize.limbs[target_bit / 64] |= (1ULL << (target_bit % 64));
+            }
+        }
+    }
 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, salt);
@@ -1193,7 +1214,19 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     if(snapoint_thread.joinable()) snapoint_thread.join();
     if(progress_thread.joinable()) progress_thread.join();
 
-    { ops = total_iters.load(); sqrtM = powl(2.0L, (key_range - 1) / 2.0L); kFactor = (long double)ops / sqrtM; }
+    //{ ops = total_iters.load(); sqrtM = powl(2.0L, (key_range - 1) / 2.0L); kFactor = (long double)ops / sqrtM; }
+
+    {
+        long double raw_ops = (long double)total_iters.load();
+        long double expected_dp_delay = (long double)(1ULL << DP_BITS);
+        long double ghost_penalty = (long double)WALKERS * expected_dp_delay;
+        long double clean_ops = (raw_ops > ghost_penalty) ? (raw_ops - ghost_penalty) : raw_ops;
+
+        sqrtM = powl(2.0L, (key_range - 1) / 2.0L);
+        kFactor = clean_ops / sqrtM;
+        ops = (unsigned long long)clean_ops;
+    }
+
 
     for (auto& w : walkers_state) {
         if (w.buffers != nullptr) {
@@ -1324,7 +1357,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (key_range < 45 || key_range > 256) {
+    if (key_range < 1 || key_range > 256) {
         std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (45 - 256)." << RESET << std::endl;
         std::cerr << "Value Entered: " << key_range << std::endl;
         return 1;
@@ -1451,7 +1484,7 @@ int main(int argc, char* argv[]) {
 
     init_secp256k1(key_range);
 
-    constexpr int TOTAL_RUNS = 1000;
+    constexpr int TOTAL_RUNS = 100;
 
     long double sum_kfactor = 0.0L;
     std::vector<long double> k_values;
