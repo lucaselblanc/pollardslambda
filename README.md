@@ -90,7 +90,7 @@ $T_\lambda = \left( \frac{2 \sqrt{b}}{m} + \frac{1}{\theta} \right) t$
 The expected constant for the factor k is:
 
 <details>
-<summary><strong>⚠️ Note</strong></summary>
+<summary><strong> Note:</strong></summary>
 
 <sub><i>The project is under active development. The reported average k-factor reflects the algorithm's current state and should not be considered the final value for implementation.</i></sub>
 
