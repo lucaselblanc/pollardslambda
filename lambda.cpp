@@ -705,8 +705,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    double m = 3.25;
-    double sqrt_factor = (key_range % 2 != 0) ? 1.41421356237309504880168 : 1.0;
+    double sqrt2 = 1.41421356237309504880168;
+    double m = (1 / sqrt2) * 5;
+    double sqrt_factor = (key_range % 2 != 0) ? sqrt2 : 1.0;
     double max_mult = 2.0 * m * sqrt_factor;
     int base_bit = key_range / 2;
 
