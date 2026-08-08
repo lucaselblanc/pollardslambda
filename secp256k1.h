@@ -1,14 +1,14 @@
-/******************************************************************************************************
- * This file is part of the Pollard's Rho distribution: (https://github.com/lucaselblanc/pollardsrho) *
- * Copyright (c) 2024, 2026 Lucas Leblanc.                                                            *
- * Distributed under the MIT software license, see the accompanying.                                  *
- * file COPYING or https://www.opensource.org/licenses/mit-license.php.                               *
- ******************************************************************************************************/
+/***********************************************************************************************************
+* This file is part of the Pollard's Lambda distribution: (https://github.com/lucaselblanc/pollardslambda) *
+* Copyright (c) 2024, 2026 Lucas Leblanc.                                                                  *
+* Distributed under the MIT software license, see the accompanying.                                        *
+* file COPYING or https://www.opensource.org/licenses/mit-license.php.                                     *
+************************************************************************************************************/
 
-/*****************************************
- * Pollard's Rho Algorithm for SECP256K1 *
- * Written by Lucas Leblanc              *
-******************************************/
+/*******************************************
+* Pollard's Lambda Algorithm for SECP256K1 *
+* Written by Lucas Leblanc                 *
+********************************************/
 
 #ifndef EC_SECP256K1_H
 #define EC_SECP256K1_H
@@ -62,10 +62,15 @@ typedef struct {
 
 using uint128_t = unsigned __int128;
 
-extern ECPointJacobian* preCompG;
-extern ECPointJacobian* preCompGphi;
-extern ECPointJacobian* preCompH;
-extern ECPointJacobian* preCompHphi;
+typedef struct {
+    uint64_t X[4];
+    uint64_t Y[4];
+} ECPointCache;
+
+extern ECPointCache* preCompG;
+extern ECPointCache* preCompGphi;
+extern ECPointCache* preCompH;
+extern ECPointCache* preCompHphi;
 extern ECPointJacobian* jacNorm;
 extern ECPointJacobian* jacEndo;
 extern ECPointJacobian* jacNormH;
@@ -77,12 +82,13 @@ void affineToJacobian(ECPointJacobian *jac, const ECPointAffine *aff);
 void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]);
 void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P);
 void fromMontgomeryP(uint64_t *result, const uint64_t *a);
-void generatePublicKey(ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, unsigned char *out, const uint64_t *PRIV_KEY, int windowSize);
+void generatePublicKey(ECPointCache *preCompTable, ECPointCache *preCompTablePhi, unsigned char *out, const uint64_t *PRIV_KEY, int windowSize);
 void initPreCompG(int windowSize);
 void initPreCompH(const ECPointJacobian *h, int windowSize);
-void jacobianScalarMultPhi(ECPointJacobian *result, ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, const uint64_t *scalar, int windowSize);
+void jacobianScalarMultPhi(ECPointJacobian *result, ECPointCache *preCompTable, ECPointCache *preCompTablePhi, const uint64_t *scalar, int windowSize);
 void jacobianDouble(ECPointJacobian *R, const ECPointJacobian *P);
 void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
+void jacobianAddMixed(ECPointJacobian *R, const ECPointJacobian *P, const ECPointCache *Q);
 void jacobianToAffine(ECPointAffine *aff, const ECPointJacobian *jac);
 void jacobianSetInfinity(ECPointJacobian *point);
 bool jacobianIsInfinity(const ECPointJacobian *P);
