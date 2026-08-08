@@ -369,7 +369,7 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
 }
 
 auto cores = std::thread::hardware_concurrency();
-int windowSize = 12; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
+int windowSize = 4;
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     out[0] = value.limbs[0];
@@ -436,8 +436,13 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
 void getfcw(int key_range) {
     int w = 4;
     double exp_steps = std::pow(2, key_range / 2.0);
+    size_t pointSize = sizeof(ECPointCache);
+    double ideal_memory = exp_steps * pointSize;
+
+    size_t l1Size = 0;
     size_t l2Size = 0;
     size_t l3Size = 0;
+
     for (int idx = 0;; idx++) {
         std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
         if (!levelFile.is_open()) break;
@@ -447,6 +452,7 @@ void getfcw(int key_range) {
         std::ifstream typeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/type");
         std::string type;
         typeFile >> type;
+
         if (type != "Data" && type != "Unified") continue;
 
         std::ifstream sizeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/size");
@@ -455,43 +461,68 @@ void getfcw(int key_range) {
         if (sizeStr.empty()) continue;
 
         size_t mult = 1;
-        if (sizeStr.back() == 'K') mult = 1024;
-        else if (sizeStr.back() == 'M') mult = 1024*1024;
+        char suffix = sizeStr.back();
+        bool has_suffix = false;
 
-        try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
-            size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
+        if (suffix == 'K' || suffix == 'k') { mult = 1024; has_suffix = true; }
+        else if (suffix == 'M' || suffix == 'm') { mult = 1024 * 1024; has_suffix = true; }
+        else if (suffix == 'G' || suffix == 'g') { mult = 1024 * 1024 * 1024; has_suffix = true; }
 
-            if(exp_steps < size) {
-                if (L == 3) l3Size = size;
-            }
-            else {
-                if (L == 2) l2Size = size;
-            }
+        try {
+            std::string numberStr = has_suffix ? sizeStr.substr(0, sizeStr.size() - 1) : sizeStr;
+            size_t size = std::stoul(numberStr) * mult;
+
+            if (L == 1 && type == "Data") l1Size = size;
+            else if (L == 2) l2Size = size;
+            else if (L == 3) l3Size = size;
         }
         catch(const std::invalid_argument& e) {
-            std::cout << ORANGE << "WRNG: " << e.what() << RESET << std::endl;
+            std::cout << ORANGE << "WRNG (sysfs): " << e.what() << RESET << std::endl;
             continue;
         }
         catch(const std::out_of_range& e) {
-            std::cout << ORANGE << "WRNG: " << e.what() << RESET << std::endl;
+            std::cout << ORANGE << "WRNG (sysfs): " << e.what() << RESET << std::endl;
             continue;
         }
     }
 
     size_t lSize = 0;
 
-    if (l2Size > 0) lSize = l2Size;
-    else if (l3Size > 0) lSize = l3Size;
+    if (l1Size > 0 && ideal_memory <= l1Size) {
+        lSize = l1Size;
+    }
+    else if (l2Size > 0 && ideal_memory <= l2Size) {
+        lSize = l2Size;
+    }
+    else if (l3Size > 0 && ideal_memory <= l3Size) {
+        lSize = l3Size;
+    }
+    else {
+        if (l3Size > 0) lSize = l3Size;
+        else if (l2Size > 0) lSize = l2Size;
+        else if (l1Size > 0) lSize = l1Size;
+    }
 
-    if (lSize > 0)
-    {
-        size_t maxPoints = lSize / 128;
-        if (maxPoints > 0) {
-            w = static_cast<int>(std::floor(std::log2(maxPoints)));
+    if (lSize == 0) {
+        l1Size = 32768;   // 32 KB
+        l2Size = 524288;  // 512 KB
+        l3Size = 4194304; // 4 MB
+
+        if (ideal_memory <= l1Size) lSize = l1Size;
+        else if (ideal_memory <= l2Size) lSize = l2Size;
+        else if (ideal_memory <= l3Size) lSize = l3Size;
+        else lSize = l3Size;
+    }
+
+    if (lSize > 0) {
+        size_t maxPoints = lSize / pointSize;
+
+        if (maxPoints > 4) {
+            w = static_cast<int>(std::floor(std::log2(maxPoints / 4.0)));
         }
     }
 
-    if(w > 4) {
+    if (w > 4) {
         windowSize = w;
     }
 }
@@ -510,10 +541,10 @@ void initScalarSteps(uint64_t* steps, int windowSize) {
 void init_secp256k1(int key_range) {
     getfcw(key_range);
 
-    preCompG = new ECPointJacobian[1ULL << windowSize];
-    preCompGphi = new ECPointJacobian[1ULL << windowSize];
-    preCompH = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
-    preCompHphi = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
+    preCompG = new ECPointCache[1ULL << windowSize];
+    preCompGphi = new ECPointCache[1ULL << windowSize];
+    preCompH = new ECPointCache[1ULL << windowSize]; //internal use in secp256k1.h
+    preCompHphi = new ECPointCache[1ULL << windowSize]; //internal use in secp256k1.h
     jacNorm = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
     jacNormH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
     jacEndo = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
@@ -706,7 +737,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
     uint256_t stepSize = {};
     double sqrt2 = 1.41421356237309504880168;
-    double m = 4.154508137537594;  //(1 / sqrt2) * 5.875361753095053;
+    double c = 5.875361753095053;
+    double m = (1 / sqrt2) * c; //m = 4.154508137537594
     double sqrt_factor = (key_range % 2 != 0) ? sqrt2 : 1.0;
     double max_mult = 2.0 * m * sqrt_factor;
     int base_bit = key_range / 2;
@@ -1370,7 +1402,7 @@ int main(int argc, char* argv[]) {
                   << RESET
                   << "K-Factor: "
                   << PINK
-                  << std::fixed 
+                  << std::fixed
                   << std::setprecision(8)
                   << (double)current_k
                   << RESET
