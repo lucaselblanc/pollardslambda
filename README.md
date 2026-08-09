@@ -98,7 +98,7 @@ The implementation achieves an empirical average k-factor:
 <details>
 <summary><strong>  Note:</strong></summary>
 
-<sub><i>The project is under active development. The reported average k-factor reflects the algorithm's current state and should not be considered the final value for implementation.</i></sub>
+<sub><i>The project is under active development. The reported average k-factor reflects the algorithm's current state and should not be considered the final value for implementation, and the actual average k-factor of this implementation will never be achieved in smaller intervals because in the context of Monte Carlo-based collision search algorithms for ECDLP, the average K-factor exhibits deterministic asymptotic stabilization as the search space (key range) expands. This performance convergence is intrinsically driven by the progressive vanishing of geometric boundary penalties. In exponentially larger intervals, spatial density dilutes, causing the probability of walker ejections—or 'deaths' resulting from edge collisions—to approach zero, thereby eradicating fruitless cycles. Consequently, the system's optimal mean step size multiplier ($m$) organically relaxes toward the continuous theoretical limit of 3.0, corroborating established cryptographic literature on random walks. This thermodynamic behavior is strictly governed by Markov chain dynamics, wherein the initial boundary-induced clustering penalty undergoes a probabilistic exponential decay, ultimately converging into its asymptotic stationary distribution.</i></sub>
 
 </details>
 
