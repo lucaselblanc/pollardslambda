@@ -369,7 +369,7 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
 }
 
 auto cores = std::thread::hardware_concurrency();
-int windowSize = 4;
+int windowSize;
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     out[0] = value.limbs[0];
@@ -434,9 +434,9 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
 }
 
 void getfcw(int key_range) {
-    int w = 4;
+    int w;
     double exp_steps = std::pow(2, key_range / 2.0);
-    size_t pointSize = sizeof(ECPointCache);
+    size_t pointSize = sizeof(ECPointJacobian);
     double ideal_memory = exp_steps * pointSize;
 
     size_t l1Size = 0;
@@ -522,9 +522,7 @@ void getfcw(int key_range) {
         }
     }
 
-    if (w > 4) {
-        windowSize = w;
-    }
+    windowSize = w;
 }
 
 void initScalarSteps(uint64_t* steps, int windowSize) {
@@ -541,10 +539,10 @@ void initScalarSteps(uint64_t* steps, int windowSize) {
 void init_secp256k1(int key_range) {
     getfcw(key_range);
 
-    preCompG = new ECPointCache[1ULL << windowSize];
-    preCompGphi = new ECPointCache[1ULL << windowSize];
-    preCompH = new ECPointCache[1ULL << windowSize]; //internal use in secp256k1.h
-    preCompHphi = new ECPointCache[1ULL << windowSize]; //internal use in secp256k1.h
+    preCompG = new ECPointJacobian[1ULL << windowSize];
+    preCompGphi = new ECPointJacobian[1ULL << windowSize];
+    preCompH = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
+    preCompHphi = new ECPointJacobian[1ULL << windowSize]; //internal use in secp256k1.h
     jacNorm = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
     jacNormH = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
     jacEndo = new ECPointJacobian[windowSize]; //internal use in secp256k1.h
@@ -736,12 +734,21 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    double sqrt2 = 1.41421356237309504880168;
-    double c = 5.875361753095053;
-    double m = (1 / sqrt2) * 4; //m = 4.154508137537594
-    double sqrt_factor = (key_range % 2 != 0) ? sqrt2 : 1.0;
+
+    const double SQRT2 = 1.41421356237309504880168;
+    const double ASYMPTOTIC_BOUND = 4.242640687119285;
+    const double BOUNDARY_PENALTY = 1.632721065975768;
+    const double LAMBDA = 0.7590863158;
+    const double BOUNDARY_CONDITION = 29.0;
+    double walkers_log2 = std::log2(static_cast<double>(WALKERS));
+    double delta_k = static_cast<double>(key_range) - walkers_log2;
+    double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::exp(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
+    double m = (1.0 / SQRT2) * c;
+    double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
     double max_mult = 2.0 * m * sqrt_factor;
     int base_bit = key_range / 2;
+
+    std::cout << "m = " << std::fixed << std::setprecision(15) << m << std::endl;
 
     for (int i = 15; i >= -48; i--) {
         double power = std::pow(2.0, i);
@@ -1239,19 +1246,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     if(snapoint_thread.joinable()) snapoint_thread.join();
     if(progress_thread.joinable()) progress_thread.join();
 
-    //{ ops = total_iters.load(); sqrtM = powl(2.0L, (key_range - 1) / 2.0L); kFactor = (long double)ops / sqrtM; }
-
-    {
-        long double raw_ops = (long double)total_iters.load();
-        long double expected_dp_delay = (long double)(1ULL << DP_BITS);
-        long double ghost_penalty = (long double)WALKERS * expected_dp_delay;
-        long double clean_ops = (raw_ops > ghost_penalty) ? (raw_ops - ghost_penalty) : raw_ops;
-
-        sqrtM = powl(2.0L, (key_range - 1) / 2.0L);
-        kFactor = clean_ops / sqrtM;
-        ops = (unsigned long long)clean_ops;
-    }
-
+    { ops = total_iters.load(); sqrtM = powl(2.0L, (key_range - 1) / 2.0L); kFactor = (long double)ops / sqrtM; }
 
     for (auto& w : walkers_state) {
         if (w.buffers != nullptr) {
@@ -1371,7 +1366,7 @@ int main(int argc, char* argv[]) {
 
     init_secp256k1(key_range);
 
-    constexpr int TOTAL_RUNS = 1000;
+    constexpr int TOTAL_RUNS = 5000;
 
     long double sum_kfactor = 0.0L;
     std::vector<long double> k_values;
