@@ -5,10 +5,10 @@
 * file COPYING or https://www.opensource.org/licenses/mit-license.php.                                     *
 ************************************************************************************************************/
 
-/*****************************************
- * Pollard's Rho Algorithm for SECP256K1 *
- * Written by Lucas Leblanc              *
-******************************************/
+/*******************************************
+* Pollard's Lambda Algorithm for SECP256K1 *
+* Written by Lucas Leblanc                 *
+********************************************/
 
 #include "secp256k1.h"
 
