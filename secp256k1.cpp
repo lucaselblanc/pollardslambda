@@ -5,10 +5,10 @@
 * file COPYING or https://www.opensource.org/licenses/mit-license.php.                                     *
 ************************************************************************************************************/
 
-/*******************************************
-* Pollard's Lambda Algorithm for SECP256K1 *
-* Written by Lucas Leblanc                 *
-********************************************/
+/*****************************************
+ * Pollard's Rho Algorithm for SECP256K1 *
+ * Written by Lucas Leblanc              *
+******************************************/
 
 #include "secp256k1.h"
 
@@ -28,10 +28,10 @@ constexpr uint64_t MINUS_B2[4] = { 0x8A280AC50774346DULL, 0xD765CDA83DB1562CULL,
 constexpr uint64_t G1[4] = { 0xE893209A45DBB031ULL, 0x3DAA8A1471E8CA7FULL, 0xE86C90E49284EB15ULL, 0x3086D221A7D46BCDULL };
 constexpr uint64_t G2[4] = { 0x1571B4AE8AC47F71ULL, 0x221208AC9DF506C6ULL, 0x6F547FA90ABFE4C4ULL, 0xE4437ED6010E8828ULL };
 constexpr uint64_t MU_P = 0xD838091DD2253531ULL;
-ECPointCache* preCompG = nullptr;
-ECPointCache* preCompGphi = nullptr;
-ECPointCache* preCompH = nullptr;
-ECPointCache* preCompHphi = nullptr;
+ECPointJacobian* preCompG = nullptr;
+ECPointJacobian* preCompGphi = nullptr;
+ECPointJacobian* preCompH = nullptr;
+ECPointJacobian* preCompHphi = nullptr;
 ECPointJacobian* jacNorm = nullptr;
 ECPointJacobian* jacEndo = nullptr;
 ECPointJacobian* jacNormH = nullptr;
@@ -322,6 +322,7 @@ void jacobianDouble(ECPointJacobian *R, const ECPointJacobian *P) {
         modMulMontP(newZ, P->Y, P->Z);
     }
     modAddP(newZ, newZ, newZ);
+    
     modMulMontP(A, P->X, P->X);
     modMulMontP(B, P->Y, P->Y);
     modMulMontP(C, B, B);
@@ -362,7 +363,7 @@ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJaco
         modMulMontP(S2, Q->Y, Z1Z1);
         modMulMontP(S2, S2, P->Z);
     }
-
+    
     if (z2_is_one) {
         for(int i = 0; i < 4; ++i) { Z2Z2[i] = ONE_MONT[i]; U1[i] = P->X[i]; S1[i] = P->Y[i]; }
     } else {
@@ -405,66 +406,6 @@ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJaco
     } else {
         modMulMontP(newZ, P->Z, Q->Z);
         modMulMontP(newZ, newZ, H);
-    }
-
-    for(int i=0; i<4; i++) {
-        R->X[i] = newX[i];
-        R->Y[i] = newY[i];
-        R->Z[i] = newZ[i];
-    }
-    R->infinity = 0;
-}
-
-void jacobianAddMixed(ECPointJacobian *R, const ECPointJacobian *P, const ECPointCache *Q) {
-    if (jacobianIsInfinity(P)) { 
-        for (int i=0; i<4; i++) { R->X[i] = Q->X[i]; R->Y[i] = Q->Y[i]; R->Z[i] = ONE_MONT[i]; }
-        R->infinity = 0;
-        return;
-    }
-
-    uint64_t U2[4], S2[4];
-    uint64_t H[4], I[4], J[4], r[4], V[4], SJ[4], newZ[4], newX[4], newY[4];
-
-    bool z1_is_one = (P->Z[0] == ONE_MONT[0] && P->Z[1] == ONE_MONT[1] && P->Z[2] == ONE_MONT[2] && P->Z[3] == ONE_MONT[3]);
-
-    if (z1_is_one) {
-        for(int i=0; i<4; i++) { U2[i] = Q->X[i]; S2[i] = Q->Y[i]; }
-    } else {
-        uint64_t Z1Z1[4];
-        modMulMontP(Z1Z1, P->Z, P->Z);
-        modMulMontP(U2, Q->X, Z1Z1);
-        modMulMontP(S2, Q->Y, Z1Z1);
-        modMulMontP(S2, S2, P->Z);
-    }
-
-    modSubP(H, U2, P->X);
-    modSubP(r, S2, P->Y);
-
-    if ((H[0] | H[1] | H[2] | H[3]) == 0) {
-        if ((r[0] | r[1] | r[2] | r[3]) == 0) {
-            jacobianDouble(R, P);
-        } else {
-            jacobianSetInfinity(R);
-        }
-        return;
-    }
-
-    modMulMontP(I, H, H);
-    modMulMontP(J, I, H);
-    modMulMontP(V, P->X, I);
-    modMulMontP(newX, r, r);
-    modSubP(newX, newX, J);
-    modSubP(newX, newX, V);
-    modSubP(newX, newX, V);
-    modSubP(newY, V, newX);
-    modMulMontP(newY, newY, r);
-    modMulMontP(SJ, P->Y, J);
-    modSubP(newY, newY, SJ);
-
-    if (z1_is_one) {
-        for(int i = 0; i < 4; ++i) newZ[i] = H[i];
-    } else {
-        modMulMontP(newZ, P->Z, H);
     }
 
     for(int i=0; i<4; i++) {
@@ -526,42 +467,25 @@ void initPreCompG(int windowSize) {
             jacobianDouble(&jacEndo[j], &jacEndo[j]);
     }
 
-    ECPointJacobian tmpPreCompG, tmpPreCompGphi, tmpAdd;
-    uint64_t zInv[4], zInv2[4], zInv3[4];
-
     for (int i = 1; i <= tableSize; i++) {
-        jacobianSetInfinity(&tmpPreCompG);
+        jacobianSetInfinity(&preCompG[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
-                jacobianAdd(&tmpAdd, &tmpPreCompG, &jacNorm[j]);
-                tmpPreCompG = tmpAdd;
+                ECPointJacobian tmp;
+                jacobianAdd(&tmp, &preCompG[i - 1], &jacNorm[j]);
+                preCompG[i - 1] = tmp;
             }
         }
 
-        modExpMontP(zInv, tmpPreCompG.Z, P_CONST_MINUS_2);
-        modMulMontP(zInv2, zInv, zInv);
-        modMulMontP(zInv3, zInv2, zInv);
-        for (int k = 0; k < 4; k++) {
-            modMulMontP(&preCompG[i - 1].X[0], tmpPreCompG.X, zInv2);
-            modMulMontP(&preCompG[i - 1].Y[0], tmpPreCompG.Y, zInv3);
-        }
-
-        jacobianSetInfinity(&tmpPreCompGphi);
+        jacobianSetInfinity(&preCompGphi[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
-                jacobianAdd(&tmpAdd, &tmpPreCompGphi, &jacEndo[j]);
-                tmpPreCompGphi = tmpAdd;
+                ECPointJacobian tmp;
+                jacobianAdd(&tmp, &preCompGphi[i - 1], &jacEndo[j]);
+                preCompGphi[i - 1] = tmp;
             }
-        }
-
-        modExpMontP(zInv, tmpPreCompGphi.Z, P_CONST_MINUS_2);
-        modMulMontP(zInv2, zInv, zInv);
-        modMulMontP(zInv3, zInv2, zInv);
-        for (int k = 0; k < 4; k++) {
-            modMulMontP(&preCompGphi[i - 1].X[0], tmpPreCompGphi.X, zInv2);
-            modMulMontP(&preCompGphi[i - 1].Y[0], tmpPreCompGphi.Y, zInv3);
         }
     }
 }
@@ -599,42 +523,25 @@ void initPreCompH(const ECPointJacobian *h, int windowSize) {
             jacobianDouble(&jacEndoH[j], &jacEndoH[j]);
     }
 
-    ECPointJacobian tmpPreCompH, tmpPreCompHphi, tmpAdd;
-    uint64_t zInv[4], zInv2[4], zInv3[4];
-
     for (int i = 1; i <= tableSize; i++) {
-        jacobianSetInfinity(&tmpPreCompH);
+        jacobianSetInfinity(&preCompH[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
-                jacobianAdd(&tmpAdd, &tmpPreCompH, &jacNormH[j]);
-                tmpPreCompH = tmpAdd;
+                ECPointJacobian tmp;
+                jacobianAdd(&tmp, &preCompH[i - 1], &jacNormH[j]);
+                preCompH[i - 1] = tmp;
             }
         }
 
-        modExpMontP(zInv, tmpPreCompH.Z, P_CONST_MINUS_2);
-        modMulMontP(zInv2, zInv, zInv);
-        modMulMontP(zInv3, zInv2, zInv);
-        for (int k = 0; k < 4; k++) {
-            modMulMontP(&preCompH[i - 1].X[0], tmpPreCompH.X, zInv2);
-            modMulMontP(&preCompH[i - 1].Y[0], tmpPreCompH.Y, zInv3);
-        }
-
-        jacobianSetInfinity(&tmpPreCompHphi);
+        jacobianSetInfinity(&preCompHphi[i - 1]);
 
         for (int j = 0; j < windowSize; j++) {
             if ((i >> j) & 1) {
-                jacobianAdd(&tmpAdd, &tmpPreCompHphi, &jacEndoH[j]);
-                tmpPreCompHphi = tmpAdd;
+                ECPointJacobian tmp;
+                jacobianAdd(&tmp, &preCompHphi[i - 1], &jacEndoH[j]);
+                preCompHphi[i - 1] = tmp;
             }
-        }
-
-        modExpMontP(zInv, tmpPreCompHphi.Z, P_CONST_MINUS_2);
-        modMulMontP(zInv2, zInv, zInv);
-        modMulMontP(zInv3, zInv2, zInv);
-        for (int k = 0; k < 4; k++) {
-            modMulMontP(&preCompHphi[i - 1].X[0], tmpPreCompHphi.X, zInv2);
-            modMulMontP(&preCompHphi[i - 1].Y[0], tmpPreCompHphi.Y, zInv3);
         }
     }
 }
@@ -807,7 +714,7 @@ void scalarSplitLambda(uint64_t r1[4], uint64_t r2[4], const uint64_t k[4]) {
     scalarAdd(r1, t1, k);
 }
 
-void jacobianScalarMultPhi(ECPointJacobian *result, ECPointCache *preCompTable, ECPointCache *preCompTablePhi, const uint64_t *scalar, int windowSize) {
+void jacobianScalarMultPhi(ECPointJacobian *result, ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, const uint64_t *scalar, int windowSize) {
     uint64_t r1[4], r2[4];
     int d = (128 + windowSize - 1) / windowSize;
 
@@ -835,13 +742,13 @@ void jacobianScalarMultPhi(ECPointJacobian *result, ECPointCache *preCompTable, 
 
         if (idx1 != 0) {
             ECPointJacobian tmp;
-            jacobianAddMixed(&tmp, result, &preCompTable[idx1 - 1]);
+            jacobianAdd(&tmp, result, &preCompTable[idx1 - 1]);
             *result = tmp;
         }
 
         if (idx2 != 0) {
             ECPointJacobian tmp;
-            jacobianAddMixed(&tmp, result, &preCompTablePhi[idx2 - 1]);
+            jacobianAdd(&tmp, result, &preCompTablePhi[idx2 - 1]);
             *result = tmp;
         }
     }
@@ -866,7 +773,7 @@ void serializePublicKey(unsigned char *out, const ECPointAffine *publicKey) {
     }
 }
 
-void generatePublicKey(ECPointCache *preCompTable, ECPointCache *preCompTablePhi, unsigned char *out, const uint64_t *PRIV_KEY, int windowSize) {
+void generatePublicKey(ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, unsigned char *out, const uint64_t *PRIV_KEY, int windowSize) {
     ECPointAffine pub;
     ECPointJacobian pub_jac;
 
