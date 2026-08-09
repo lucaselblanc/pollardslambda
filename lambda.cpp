@@ -369,7 +369,7 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
 }
 
 auto cores = std::thread::hardware_concurrency();
-int windowSize = 12; //Default value used only if getfcw() detection cannot access the processor for some reason, it can happen on different platforms like termux for example.
+int windowSize;
 
 void uint256_to_uint64_array(uint64_t* out, const uint256_t& value) {
     out[0] = value.limbs[0];
@@ -434,10 +434,15 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
 }
 
 void getfcw(int key_range) {
-    int w = 4;
+    int w;
     double exp_steps = std::pow(2, key_range / 2.0);
+    size_t pointSize = sizeof(ECPointJacobian);
+    double ideal_memory = exp_steps * pointSize;
+
+    size_t l1Size = 0;
     size_t l2Size = 0;
     size_t l3Size = 0;
+
     for (int idx = 0;; idx++) {
         std::ifstream levelFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/level");
         if (!levelFile.is_open()) break;
@@ -447,6 +452,7 @@ void getfcw(int key_range) {
         std::ifstream typeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/type");
         std::string type;
         typeFile >> type;
+
         if (type != "Data" && type != "Unified") continue;
 
         std::ifstream sizeFile("/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(idx) + "/size");
@@ -455,45 +461,68 @@ void getfcw(int key_range) {
         if (sizeStr.empty()) continue;
 
         size_t mult = 1;
-        if (sizeStr.back() == 'K') mult = 1024;
-        else if (sizeStr.back() == 'M') mult = 1024*1024;
+        char suffix = sizeStr.back();
+        bool has_suffix = false;
 
-        try { //Adjust the table to fit in the processor's L2/L3 cache (more fast), avoiding jumping to RAM.
-            size_t size = std::stoul(sizeStr.substr(0, sizeStr.size()-1)) * mult;
+        if (suffix == 'K' || suffix == 'k') { mult = 1024; has_suffix = true; }
+        else if (suffix == 'M' || suffix == 'm') { mult = 1024 * 1024; has_suffix = true; }
+        else if (suffix == 'G' || suffix == 'g') { mult = 1024 * 1024 * 1024; has_suffix = true; }
 
-            if(exp_steps < size) {
-                if (L == 3) l3Size = size;
-            }
-            else {
-                if (L == 2) l2Size = size;
-            }
+        try {
+            std::string numberStr = has_suffix ? sizeStr.substr(0, sizeStr.size() - 1) : sizeStr;
+            size_t size = std::stoul(numberStr) * mult;
+
+            if (L == 1 && type == "Data") l1Size = size;
+            else if (L == 2) l2Size = size;
+            else if (L == 3) l3Size = size;
         }
         catch(const std::invalid_argument& e) {
-            std::cout << ORANGE << "WRNG: " << e.what() << RESET << std::endl;
+            std::cout << ORANGE << "WRNG (sysfs): " << e.what() << RESET << std::endl;
             continue;
         }
         catch(const std::out_of_range& e) {
-            std::cout << ORANGE << "WRNG: " << e.what() << RESET << std::endl;
+            std::cout << ORANGE << "WRNG (sysfs): " << e.what() << RESET << std::endl;
             continue;
         }
     }
 
     size_t lSize = 0;
 
-    if (l2Size > 0) lSize = l2Size;
-    else if (l3Size > 0) lSize = l3Size;
+    if (l1Size > 0 && ideal_memory <= l1Size) {
+        lSize = l1Size;
+    }
+    else if (l2Size > 0 && ideal_memory <= l2Size) {
+        lSize = l2Size;
+    }
+    else if (l3Size > 0 && ideal_memory <= l3Size) {
+        lSize = l3Size;
+    }
+    else {
+        if (l3Size > 0) lSize = l3Size;
+        else if (l2Size > 0) lSize = l2Size;
+        else if (l1Size > 0) lSize = l1Size;
+    }
 
-    if (lSize > 0)
-    {
-        size_t maxPoints = lSize / 128;
-        if (maxPoints > 0) {
-            w = static_cast<int>(std::floor(std::log2(maxPoints)));
+    if (lSize == 0) {
+        l1Size = 32768;   // 32 KB
+        l2Size = 524288;  // 512 KB
+        l3Size = 4194304; // 4 MB
+
+        if (ideal_memory <= l1Size) lSize = l1Size;
+        else if (ideal_memory <= l2Size) lSize = l2Size;
+        else if (ideal_memory <= l3Size) lSize = l3Size;
+        else lSize = l3Size;
+    }
+
+    if (lSize > 0) {
+        size_t maxPoints = lSize / pointSize;
+
+        if (maxPoints > 4) {
+            w = static_cast<int>(std::floor(std::log2(maxPoints / 4.0)));
         }
     }
 
-    if(w > 4) {
-        windowSize = w;
-    }
+    windowSize = w;
 }
 
 void initScalarSteps(uint64_t* steps, int windowSize) {
@@ -705,8 +734,32 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    int actual_step_bit = (key_range / 2) + 3;
-    stepSize.limbs[actual_step_bit / 64] = 1ULL << (actual_step_bit % 64);
+
+    const double SQRT2 = 1.41421356237309504880168;
+    const double ASYMPTOTIC_BOUND = 4.242640687119285;
+    const double BOUNDARY_PENALTY = 1.632721065975768;
+    const double LAMBDA = 0.7590863158;
+    const double BOUNDARY_CONDITION = 29.0;
+    double walkers_log2 = std::log2(static_cast<double>(WALKERS));
+    double delta_k = static_cast<double>(key_range) - walkers_log2;
+    double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::exp(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
+    double m = (1.0 / SQRT2) * c;
+    double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
+    double max_mult = 2.0 * m * sqrt_factor;
+    int base_bit = key_range / 2;
+
+    std::cout << "m = " << std::fixed << std::setprecision(15) << m << std::endl;
+
+    for (int i = 15; i >= -48; i--) {
+        double power = std::pow(2.0, i);
+        if (max_mult >= power) {
+            max_mult -= power;
+            int target_bit = base_bit + i;
+            if (target_bit >= 0 && target_bit < 256) {
+                stepSize.limbs[target_bit / 64] |= (1ULL << (target_bit % 64));
+            }
+        }
+    }
 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, salt);
@@ -1193,7 +1246,16 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     if(snapoint_thread.joinable()) snapoint_thread.join();
     if(progress_thread.joinable()) progress_thread.join();
 
-    { ops = total_iters.load(); sqrtM = powl(2.0L, (key_range - 1) / 2.0L); kFactor = (long double)ops / sqrtM; }
+    {
+        long double raw_ops = (long double)total_iters.load();
+        long double expected_dp_delay = (long double)(1ULL << DP_BITS);
+        long double ghost_penalty = (long double)WALKERS * expected_dp_delay;
+        long double clean_ops = (raw_ops > ghost_penalty) ? (raw_ops - ghost_penalty) : raw_ops;
+
+        sqrtM = powl(2.0L, (key_range - 1) / 2.0L);
+        kFactor = clean_ops / sqrtM;
+        ops = (unsigned long long)clean_ops;
+    }
 
     for (auto& w : walkers_state) {
         if (w.buffers != nullptr) {
@@ -1323,8 +1385,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (key_range < 45 || key_range > 256) {
-        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (45 - 256)." << RESET << std::endl;
+    if (key_range < 1 || key_range > 256) {
+        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (1 - 256)." << RESET << std::endl;
         std::cerr << "Value Entered: " << key_range << std::endl;
         return 1;
     }
@@ -1340,6 +1402,8 @@ int main(int argc, char* argv[]) {
         snapoint_path = pub_key_hex + ".saved";
     }
 
+    init_secp256k1(key_range);
+
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
@@ -1351,7 +1415,6 @@ int main(int argc, char* argv[]) {
     }
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
 
-    init_secp256k1(key_range);
     uint256_t found_key = lambda(pub_key_hex, key_range, walkers, dp, snapoint_path, snaptime_sec);
 
     std::cout << GREEN << "[SUCCESS!] " << RESET << "Collision Found!" << std::endl;
