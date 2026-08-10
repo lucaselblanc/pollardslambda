@@ -102,6 +102,10 @@ The implementation achieves an empirical average k-factor:
 
 </details>
 
+```cpp
+//8 thousand samples in the 50-bit range.
+```
+
 $average k ≈ 1.246$
 
 $median k ≈ 1.175$
