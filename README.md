@@ -102,9 +102,9 @@ The implementation achieves an empirical average k-factor:
 
 </details>
 
-$average k ≈ 1.238$
+$average k ≈ 1.246$
 
-$median k ≈ 1.169$
+$median k ≈ 1.175$
 
 This value was obtained through thousands of independent benchmark samples, measuring the average number of operations required to solve interval-restricted searches.
 
