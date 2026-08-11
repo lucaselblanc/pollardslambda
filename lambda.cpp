@@ -737,8 +737,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
     const double SQRT2 = 1.41421356237309504880168;
     const double ASYMPTOTIC_BOUND = 4.242640687119285;
-    const double BOUNDARY_PENALTY = 1.632721065975768;
-    const double LAMBDA = 0.7590863158;
+    const long double LAMBDA = 0.7590869746950557992L;
+const long double BOUNDARY_PENALTY = 1.6327208163007148536L;
     const double BOUNDARY_CONDITION = 29.0;
     double walkers_log2 = std::log2(static_cast<double>(WALKERS));
     double delta_k = static_cast<double>(key_range) - walkers_log2;
