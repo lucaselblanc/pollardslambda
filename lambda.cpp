@@ -735,20 +735,14 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
     uint256_t stepSize = {};
 
-    const double SQRT2 = 1.41421356237309504880168;
-    const double ASYMPTOTIC_BOUND = 4.242640687119285;
+    const long double SQRT2 = 1.414213562373095048801688724209698078L;                                                                     const long double ASYMPTOTIC_BOUND = 4.2426409336992851464L;
     const long double LAMBDA = 0.7590869746950557992L;
-const long double BOUNDARY_PENALTY = 1.6327208163007148536L;
-    const double BOUNDARY_CONDITION = 29.0;
-    double walkers_log2 = std::log2(static_cast<double>(WALKERS));
-    double delta_k = static_cast<double>(key_range) - walkers_log2;
-    double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::exp(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
-    double m = (1.0 / SQRT2) * c;
-    double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
-    double max_mult = 2.0 * m * sqrt_factor;
+    const long double BOUNDARY_PENALTY = 1.6327208163007148536L;                                                                           const long double BOUNDARY_CONDITION = 29.0L;
+    long double walkers_log2 = std::log2(static_cast<long double>(WALKERS));
+    long double delta_k = static_cast<long double>(key_range) - walkers_log2;                                                              long double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::expl(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
+    long double m = (1.0L / SQRT2) * c;
+    double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;                                                                               double max_mult = 2.0 * m * sqrt_factor;
     int base_bit = key_range / 2;
-
-    std::cout << "m = " << std::fixed << std::setprecision(15) << m << std::endl;
 
     for (int i = 15; i >= -48; i--) {
         double power = std::pow(2.0, i);
