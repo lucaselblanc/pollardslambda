@@ -740,7 +740,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     const long double BOUNDARY_PENALTY = 1.6327208163007148536L;                                                                           const long double BOUNDARY_CONDITION = 29.0L;
     long double walkers_log2 = std::log2(static_cast<long double>(WALKERS));
     long double delta_k = static_cast<long double>(key_range) - walkers_log2;                                                              long double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::expl(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
-    long double m = (1.0L / SQRT2) * c;
+    //long double m = (1.0L / SQRT2) * c;
+    long double m = (1.0L / SQRT2) * 4.0;
     double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;                                                                               double max_mult = 2.0 * m * sqrt_factor;
     int base_bit = key_range / 2;
 
