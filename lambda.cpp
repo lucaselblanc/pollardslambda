@@ -757,8 +757,12 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     }
     */
 
+    /*
     int actual_step_bit = (key_range / 2) + 3;
     stepSize.limbs[actual_step_bit / 64] = 1ULL << (actual_step_bit % 64);
+    */
+
+    stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, salt);
