@@ -735,18 +735,21 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
     uint256_t stepSize = {};
 
-    /*
-    const long double SQRT2 = 1.414213562373095048801688724209698078L;                                                                     const long double ASYMPTOTIC_BOUND = 4.2426409336992851464L;
+    const long double SQRT2 = 1.414213562373095048801688724209698078L;
+    const long double ASYMPTOTIC_BOUND = 4.2426409336992851464L;
     const long double LAMBDA = 0.7590869746950557992L;
-    const long double BOUNDARY_PENALTY = 1.6327208163007148536L;                                                                           const long double BOUNDARY_CONDITION = 29.0L;
-    long double walkers_log2 = std::log2(static_cast<long double>(WALKERS));
-    long double delta_k = static_cast<long double>(key_range) - walkers_log2;                                                              long double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::expl(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
+    const long double BOUNDARY_PENALTY = 1.6327208163007148536L;
+    const double BOUNDARY_CONDITION = 29.0L;
+    long double  walkers_log2 = std::log2(static_cast<long double>(WALKERS));
+    long double delta_k = static_cast<long double>(key_range) - walkers_log2;
+    long double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::expl(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
     long double m = (1.0L / SQRT2) * c;
-    double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;                                                                               double max_mult = 2.0 * m * sqrt_factor;
+    long double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
+    long double max_mult = 2.0 * m * sqrt_factor;
     int base_bit = key_range / 2;
 
-    for (int i = 15; i >= -48; i--) {
-        double power = std::pow(2.0, i);
+    for (int i = 15; i >= -base_bit; i--) {
+        long double power = std::pow(2.0, i);
         if (max_mult >= power) {
             max_mult -= power;
             int target_bit = base_bit + i;
@@ -755,14 +758,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
             }
         }
     }
-    */
 
-    /*
-    int actual_step_bit = (key_range / 2) + 3;
-    stepSize.limbs[actual_step_bit / 64] = 1ULL << (actual_step_bit % 64);
-    */
-
-    stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
+    //std::cout << "m = " << std::fixed << std::setprecision(15) << m << std::endl;
 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, salt);
@@ -808,29 +805,17 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
         total_cycles.store(restored_cycles, std::memory_order_relaxed);
     }
 
-    int a_shift = 0;
-    while ((1ULL << (a_shift + 1)) <= std::max<uint32_t>(1, WALKERS / 2)) a_shift++;
-    int s_bit = (key_range - 1) - a_shift;
-    if (s_bit < 0) s_bit = 0;
-    uint256_t S{};
-    if (s_bit < 256) S.limbs[s_bit / 64] = 1ULL << (s_bit % 64);
-    else { S.limbs[0] = ~0ULL; S.limbs[1] = ~0ULL; S.limbs[2] = ~0ULL; S.limbs[3] = ~0ULL; }
-
-    uint256_t min_dp_dist{};
-    int dp_dist_bit = (key_range / 2) + DP_BITS + 1;
-    if (dp_dist_bit < 256) min_dp_dist.limbs[dp_dist_bit / 64] = 1ULL << (dp_dist_bit % 64);
-    else { min_dp_dist.limbs[0] = ~0ULL; min_dp_dist.limbs[1] = ~0ULL; min_dp_dist.limbs[2] = ~0ULL; min_dp_dist.limbs[3] = ~0ULL; }
-
-    uint256_t S2 = S;
-    scalarAdd(S2.limbs, S2.limbs, S.limbs);
-    uint256_t S3 = S2;
     uint256_t gk{};
-    int g_bit = key_range - 4;
-    gk.limbs[g_bit / 64] = 1ULL << (g_bit % 64);
+    int g_bit = key_range - 1;
+    if (g_bit >= 0 && g_bit < 256) {
+        gk.limbs[g_bit / 64] = 1ULL << (g_bit % 64);
+    }
 
     uint256_t hk{};
     int h_bit = key_range - 1;
-    hk.limbs[h_bit / 64] = 1ULL << (h_bit % 64);
+    if (h_bit >= 0 && h_bit < 256) {
+        hk.limbs[h_bit / 64] = 1ULL << (h_bit % 64);
+    }
 
     auto reset = [&](WalkState* w, bool a) {
         w->rng.seed(std::random_device{}() ^ (uint64_t)w->walk_id ^ std::chrono::high_resolution_clock::now().time_since_epoch().count());
