@@ -735,6 +735,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
     uint256_t stepSize = {};
 
+    stepSize.limbs[(key_range / 2) / 64] = 1ULL << ((key_range / 2) % 64);
+
+    /*
     const long double SQRT2 = 1.414213562373095048801688724209698078L;
     const long double ASYMPTOTIC_BOUND = 4.2426409336992851464L;
     const long double LAMBDA = 0.7590869746950557992L;
@@ -758,6 +761,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
             }
         }
     }
+    */
 
     //std::cout << "m = " << std::fixed << std::setprecision(15) << m << std::endl;
 
