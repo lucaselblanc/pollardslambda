@@ -10,7 +10,7 @@
 * Written by Lucas Leblanc                 *
 ********************************************/
 
-/* --- POLLARD'S LAMBDA (ρλ) --- */
+/* --- POLLARD'S LAMBDA ρλ (Gaudry-Schost / Galbraith-Ruprai) --- */
 
 #include "secp256k1.h"
 
@@ -734,7 +734,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-
+    //Dynamic Thermodynamic Density Model - Precision of 1000 samples, RCE = 1 ÷ √1000 ~= 3,16227766%
     const long double SQRT2 = 1.414213562373095048801688724209698078L;
     const long double ASYMPTOTIC_BOUND = 4.2426409336992851464L;
     const long double LAMBDA = 0.7590869746950557992L;
@@ -742,7 +742,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     const double BOUNDARY_CONDITION = 29.0L;
     long double  walkers_log2 = std::log2(static_cast<long double>(WALKERS));
     long double delta_k = static_cast<long double>(key_range) - walkers_log2;
-    long double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::expl(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
+    long double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::exp(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
     long double m = (1.0L / SQRT2) * c;
     long double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
     long double max_mult = 2.0 * m * sqrt_factor;
@@ -806,13 +806,13 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     }
 
     uint256_t gk{};
-    int g_bit = key_range - 1;
+    int g_bit = key_range - 2;
     if (g_bit >= 0 && g_bit < 256) {
         gk.limbs[g_bit / 64] = 1ULL << (g_bit % 64);
     }
 
     uint256_t hk{};
-    int h_bit = key_range - 1;
+    int h_bit = key_range - 2;
     if (h_bit >= 0 && h_bit < 256) {
         hk.limbs[h_bit / 64] = 1ULL << (h_bit % 64);
     }
@@ -1452,3 +1452,146 @@ int main(int argc, char* argv[]) {
     delete[] jacEndoH;
     return 0;
 }
+
+/*
+int main(int argc, char* argv[]) {
+    std::string pub_key_hex;
+    int key_range;
+    int walkers;
+    int dp = -1;
+    std::string snapoint_path;
+    int snaptime_sec = 20;
+
+    if (argc == 1) {
+        std::cout << "The Parameters Cannot Be Empty!" << std::endl;
+        return 1;
+    }
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "--pubkey" && i + 1 < argc) {
+            pub_key_hex = argv[++i];
+        } else if (arg == "--keyrange" && i + 1 < argc) {
+            key_range = std::stoi(argv[++i]);
+        } else if (arg == "--walkers" && i + 1 < argc) {
+            walkers = std::stoi(argv[++i]);
+        } else if (arg == "--dp" && i + 1 < argc) {
+            dp = std::stoi(argv[++i]);
+        } else if (arg == "--snaptime" && i + 1 < argc) {
+            snaptime_sec = std::stoi(argv[++i]);
+        } else if (arg == "--t" && i + 1 < argc) {
+            cores = std::stoi(argv[++i]);
+        }
+    }
+
+    if (pub_key_hex.length() != 66) {
+        std::cerr << RED << "[ERROR] Invalid Public Key Length." << RESET << std::endl;
+        return 1;
+    }
+
+    if (dp <= 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
+        std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
+        dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
+    }
+
+    if (snapoint_path.empty()) {
+        snapoint_path = pub_key_hex + ".saved";
+    }
+
+    init_secp256k1(key_range);
+
+    constexpr int TOTAL_RUNS = 4000;
+
+    long double sum_kfactor = 0.0L;
+    std::vector<long double> k_values;
+    k_values.reserve(TOTAL_RUNS);
+
+    for (int run = 0; run < TOTAL_RUNS; run++) {
+
+        std::cout << CYAN 
+                  << "\n[RUN " << (run + 1) << "/" << TOTAL_RUNS << "]"
+                  << RESET << std::endl;
+
+        uint256_t found_key = lambda(
+            pub_key_hex,
+            key_range,
+            walkers,
+            dp,
+            snapoint_path,
+            snaptime_sec
+        );
+
+        long double current_k = kFactor;
+
+        k_values.push_back(current_k);
+        sum_kfactor += current_k;
+
+        std::cout << GREEN 
+                  << "[Collision " << (run + 1) << "] "
+                  << RESET
+                  << "K-Factor: "
+                  << PINK
+                  << std::fixed
+                  << std::setprecision(8)
+                  << (double)current_k
+                  << RESET
+                  << std::endl;
+    }
+
+    long double average_k = sum_kfactor / TOTAL_RUNS;
+
+    std::sort(k_values.begin(), k_values.end());
+
+    long double median_k;
+
+    if (TOTAL_RUNS % 2 == 0) {
+        median_k = (k_values[TOTAL_RUNS / 2 - 1] + k_values[TOTAL_RUNS / 2]) / 2.0L;
+    } else {
+        median_k = k_values[TOTAL_RUNS / 2];
+    }
+
+    std::cout << "\n"
+          << BLUE << "---------------------------------------------------------------------------"
+          << RESET << std::endl;
+
+std::cout << CYAN 
+          << "[RESULT] Average K-Factor (" 
+          << TOTAL_RUNS 
+          << " runs): "
+          << RESET
+          << PINK
+          << std::fixed
+          << std::setprecision(8)
+          << (double)average_k
+          << RESET
+          << std::endl;
+
+std::cout << CYAN 
+          << "[RESULT] Median K-Factor (" 
+          << TOTAL_RUNS 
+          << " runs): "
+          << RESET
+          << GREEN
+          << std::fixed
+          << std::setprecision(8)
+          << (double)median_k
+          << RESET
+          << std::endl;
+
+std::cout << BLUE << "---------------------------------------------------------------------------"
+          << RESET << std::endl;
+
+
+    delete[] preCompG;
+    delete[] preCompGphi;
+    delete[] preCompH;
+    delete[] preCompHphi;
+    delete[] jacNorm;
+    delete[] jacNormH;
+    delete[] jacEndo;
+    delete[] jacEndoH;
+
+    return 0;
+}
+*/
