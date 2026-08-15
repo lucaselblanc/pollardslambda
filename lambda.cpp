@@ -1373,8 +1373,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (key_range < 1 || key_range > 256) {
-        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (1 - 256)." << RESET << std::endl;
+    if (key_range < 2 || key_range > 256) {
+        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (2 - 256)." << RESET << std::endl;
         std::cerr << "Value Entered: " << key_range << std::endl;
         return 1;
     }
