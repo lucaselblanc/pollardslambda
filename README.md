@@ -62,7 +62,14 @@ avalanche mixing.
 When two walkers reach the same point with different coefficients, a
 modular equation allows recovery through modular inversion.
 
-## Benchmark TPU v5e-8
+## Benchmark CPU v5e-8 224 cores
+
+<details>
+<summary><strong>  Note:</strong></summary>
+
+<sub><i>Performance metrics are governed by probabilistic Monte Carlo variables. Consequently, execution cycles will demonstrate natural stochastic fluctuation across independent iterations, asymptotically converging upon the expected mean K-factor of the algorithm.</i></sub>
+
+</details>
 
 ```
 5 bits ≈ 00:00:00
