@@ -1316,6 +1316,7 @@ std::string HexToWif(const std::string& hexKey) {
     return EncodeBase58Check(payload);
 }
 
+/*
 int main(int argc, char* argv[]) {
     std::string pub_key_hex;
     int key_range;
@@ -1452,8 +1453,8 @@ int main(int argc, char* argv[]) {
     delete[] jacEndoH;
     return 0;
 }
+*/
 
-/*
 int main(int argc, char* argv[]) {
     std::string pub_key_hex;
     int key_range;
@@ -1594,4 +1595,3 @@ std::cout << BLUE << "----------------------------------------------------------
 
     return 0;
 }
-*/
