@@ -729,7 +729,14 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     initPreCompH(&target_affine_jac, windowSize);
 
     const uint32_t N_STEPS = 2048;
-    struct StepLocal { ECPointJacobian point; uint256_t a; uint256_t b; };
+    struct StepLocal {
+        ECPointJacobian point;
+        uint256_t a;
+        uint256_t b;
+        uint64_t x_mont[4];
+        uint64_t y_mont[4];
+        uint64_t neg_y_mont[4];
+    };
     std::vector<StepLocal> localStepTable(N_STEPS);
     std::mt19937_64 salt(target_affine.x[0]);
 
@@ -771,6 +778,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
         ECPointAffine aff_step;
         jacobianToAffine(&aff_step, &localStepTable[i].point);
         affineToJacobian(&localStepTable[i].point, &aff_step);
+        toMontgomeryP(localStepTable[i].x_mont, aff_step.x);
+        toMontgomeryP(localStepTable[i].y_mont, aff_step.y);
+        modSubP(localStepTable[i].neg_y_mont, zero, localStepTable[i].y_mont);
     }
 
     DPTable dp_table;
@@ -917,10 +927,11 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     unsigned int snapoint_paused = 0;
     unsigned int snapoint_thread_count = 0;
 
-    auto snapoint_pause = [&]() {
+    auto snapoint_pause = [&](auto sync_fn) {
         if (snapoint_path.empty() || snaptime_sec <= 0) return;
         std::unique_lock<std::mutex> lock(snapoint_mutex);
         if (!snapoint_requested) return;
+        sync_fn();
         snapoint_paused++;
         snapoint_cv.notify_all();
         snapoint_cv.wait(lock, [&]() {
@@ -977,6 +988,11 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
             std::vector<ECPointAffine> aff_batch(local_count);
             std::vector<uint64_t> scratch_prefix(local_count * 4);
             std::vector<uint64_t> scratch_inv(local_count * 4);
+            std::vector<uint64_t> X_m(local_count * 4);
+            std::vector<uint64_t> Y_m(local_count * 4);
+            std::vector<uint64_t> dx(local_count * 4);
+            std::vector<uint64_t> dy(local_count * 4);
+            std::vector<uint32_t> cur_step_idx(local_count);
             constexpr uint32_t INV_FLAG = 0x80000000u;
             std::vector<uint32_t> last_jmp_id(local_count, 0xFFFFFFFFu);
 
@@ -986,77 +1002,166 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
             batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
 
+            for (int i = 0; i < local_count; i++) {
+                toMontgomeryP(&X_m[i * 4], aff_batch[i].x);
+                toMontgomeryP(&Y_m[i * 4], aff_batch[i].y);
+                memcpy(walkers_state[id_start + i].snapshot_x, &X_m[i * 4], 32);
+                walkers_state[id_start + i].snapshot_steps = 0;
+            }
+
+            auto sync_jac = [&]() {
+                for (int i = 0; i < local_count; i++) {
+                    ECPointAffine aff;
+                    fromMontgomeryP(aff.x, &X_m[i * 4]);
+                    fromMontgomeryP(aff.y, &Y_m[i * 4]);
+                    affineToJacobian(&walkers_state[id_start + i].R, &aff);
+                }
+            };
+
             while (search_in_progress.load(std::memory_order_acquire)) {
-                snapoint_pause();
+                snapoint_pause(sync_jac);
                 if (!search_in_progress.load(std::memory_order_acquire)) break;
                 total_iters.fetch_add(local_count, std::memory_order_relaxed);
+
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-                    uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
-                    bool negate = aff_batch[i].y[0] & 1;
-                    uint32_t cur_jmp_id = step_idx | (negate ? INV_FLAG : 0);
-                    ECPointJacobian step_point = localStepTable[step_idx].point;
-                    if (negate) {
-                        uint64_t zero[4] = {0, 0, 0, 0};
-                        modSubP(step_point.Y, zero, step_point.Y);
+                    uint32_t step_idx = get_step_idx(&X_m[i * 4], N_STEPS);
+                    bool negate = Y_m[i * 4] & 1;
+                    uint32_t jmp_id = step_idx | (negate ? INV_FLAG : 0);
+                    if (last_jmp_id[i] != 0xFFFFFFFFu && jmp_id == (last_jmp_id[i] ^ INV_FLAG)) {
+                        step_idx = (step_idx + 1) & (N_STEPS - 1);
+                        jmp_id = step_idx | (negate ? INV_FLAG : 0);
                     }
-                    pointAddJacobian(&w->R, &w->R, &step_point);
+                    cur_step_idx[i] = step_idx;
+                    last_jmp_id[i] = jmp_id;
+
                     if (negate) {
                         scalarSub(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                     } else {
                         scalarAdd(w->a.limbs, w->a.limbs, localStepTable[step_idx].a.limbs);
                     }
-                    last_jmp_id[i] = cur_jmp_id;
-                    jac_batch[i] = w->R;
+
+                    const uint64_t* step_y = negate ? localStepTable[step_idx].neg_y_mont : localStepTable[step_idx].y_mont;
+                    modSubP(&dx[i * 4], localStepTable[step_idx].x_mont, &X_m[i * 4]);
+                    modSubP(&dy[i * 4], step_y, &Y_m[i * 4]);
                 }
 
-                batchJacobianToAffine(aff_batch.data(), jac_batch.data(), local_count, scratch_prefix.data(), scratch_inv.data());
+                memcpy(&scratch_prefix[0], &dx[0], 32);
+                for (int i = 1; i < local_count; i++) {
+                    modMulMontP(&scratch_prefix[i * 4], &scratch_prefix[(i - 1) * 4], &dx[i * 4]);
+                }
+
+                uint64_t total_inv[4];
+                modExpMontP(total_inv, &scratch_prefix[(local_count - 1) * 4], SUB2_FP);
+                uint64_t current_inv[4];
+                memcpy(current_inv, total_inv, 32);
+
+                for (int i = local_count - 1; i > 0; i--) {
+                    modMulMontP(&scratch_inv[i * 4], current_inv, &scratch_prefix[(i - 1) * 4]);
+                    modMulMontP(current_inv, current_inv, &dx[i * 4]);
+                }
+                memcpy(&scratch_inv[0], current_inv, 32);
+
+                int main_count = local_count - (local_count % 4);
+                for (int i = 0; i < main_count; i += 4) {
+                    uint64_t lmb0[4], lmb1[4], lmb2[4], lmb3[4];
+                    uint64_t lmb2_0[4], lmb2_1[4], lmb2_2[4], lmb2_3[4];
+                    uint64_t new_x0[4], new_x1[4], new_x2[4], new_x3[4];
+                    uint64_t tmp0[4], tmp1[4], tmp2[4], tmp3[4];
+                    uint64_t new_y0[4], new_y1[4], new_y2[4], new_y3[4];
+
+                    modMulMontP(lmb0, &dy[(i + 0) * 4], &scratch_inv[(i + 0) * 4]);
+                    modMulMontP(lmb1, &dy[(i + 1) * 4], &scratch_inv[(i + 1) * 4]);
+                    modMulMontP(lmb2, &dy[(i + 2) * 4], &scratch_inv[(i + 2) * 4]);
+                    modMulMontP(lmb3, &dy[(i + 3) * 4], &scratch_inv[(i + 3) * 4]);
+
+                    modMulMontP(lmb2_0, lmb0, lmb0);
+                    modMulMontP(lmb2_1, lmb1, lmb1);
+                    modMulMontP(lmb2_2, lmb2, lmb2);
+                    modMulMontP(lmb2_3, lmb3, lmb3);
+
+                    modSubP(new_x0, lmb2_0, &X_m[(i + 0) * 4]);
+                    modSubP(new_x0, new_x0, localStepTable[cur_step_idx[i + 0]].x_mont);
+                    modSubP(new_x1, lmb2_1, &X_m[(i + 1) * 4]);
+                    modSubP(new_x1, new_x1, localStepTable[cur_step_idx[i + 1]].x_mont);
+                    modSubP(new_x2, lmb2_2, &X_m[(i + 2) * 4]);
+                    modSubP(new_x2, new_x2, localStepTable[cur_step_idx[i + 2]].x_mont);
+                    modSubP(new_x3, lmb2_3, &X_m[(i + 3) * 4]);
+                    modSubP(new_x3, new_x3, localStepTable[cur_step_idx[i + 3]].x_mont);
+
+                    modSubP(tmp0, &X_m[(i + 0) * 4], new_x0);
+                    modSubP(tmp1, &X_m[(i + 1) * 4], new_x1);
+                    modSubP(tmp2, &X_m[(i + 2) * 4], new_x2);
+                    modSubP(tmp3, &X_m[(i + 3) * 4], new_x3);
+
+                    modMulMontP(new_y0, lmb0, tmp0);
+                    modMulMontP(new_y1, lmb1, tmp1);
+                    modMulMontP(new_y2, lmb2, tmp2);
+                    modMulMontP(new_y3, lmb3, tmp3);
+
+                    modSubP(new_y0, new_y0, &Y_m[(i + 0) * 4]);
+                    modSubP(new_y1, new_y1, &Y_m[(i + 1) * 4]);
+                    modSubP(new_y2, new_y2, &Y_m[(i + 2) * 4]);
+                    modSubP(new_y3, new_y3, &Y_m[(i + 3) * 4]);
+
+                    memcpy(&X_m[(i + 0) * 4], new_x0, 32);
+                    memcpy(&X_m[(i + 1) * 4], new_x1, 32);
+                    memcpy(&X_m[(i + 2) * 4], new_x2, 32);
+                    memcpy(&X_m[(i + 3) * 4], new_x3, 32);
+
+                    memcpy(&Y_m[(i + 0) * 4], new_y0, 32);
+                    memcpy(&Y_m[(i + 1) * 4], new_y1, 32);
+                    memcpy(&Y_m[(i + 2) * 4], new_y2, 32);
+                    memcpy(&Y_m[(i + 3) * 4], new_y3, 32);
+                }
+                for (int i = main_count; i < local_count; i++) {
+                    uint64_t lmb[4], lmb2[4], new_x[4], tmp[4], new_y[4];
+                    modMulMontP(lmb, &dy[i * 4], &scratch_inv[i * 4]);
+                    modMulMontP(lmb2, lmb, lmb);
+                    modSubP(new_x, lmb2, &X_m[i * 4]);
+                    modSubP(new_x, new_x, localStepTable[cur_step_idx[i]].x_mont);
+
+                    modSubP(tmp, &X_m[i * 4], new_x);
+                    modMulMontP(new_y, lmb, tmp);
+                    modSubP(new_y, new_y, &Y_m[i * 4]);
+
+                    memcpy(&X_m[i * 4], new_x, 32);
+                    memcpy(&Y_m[i * 4], new_y, 32);
+                }
 
                 for (int i = 0; i < local_count; i++) {
                     WalkState* w = &walkers_state[id_start + i];
-                    if (last_jmp_id[i] != 0xFFFFFFFFu) {
-                        uint32_t step_idx = get_step_idx(aff_batch[i].x, N_STEPS);
-                        bool y_odd = aff_batch[i].y[0] & 1;
-                        uint32_t next_jmp_id = step_idx | (y_odd ? 0 : INV_FLAG);
-                        if (last_jmp_id[i] == next_jmp_id) {
-                            MurmurHash3 hasher;
-                            uint32_t idx = static_cast<uint32_t>(hasher(aff_batch[i].x[0] ^ 0xDEADBEEFULL) % N_STEPS);
-                            ECPointJacobian escape_point = localStepTable[idx].point;
-                            pointAddJacobian(&w->R, &w->R, &escape_point);
-                            scalarAdd(w->a.limbs, w->a.limbs, localStepTable[idx].a.limbs);
-                            ECPointAffine aff_escape;
-                            jacobianToAffine(&aff_escape, &w->R);
-                            aff_batch[i] = aff_escape;
-                            jac_batch[i] = w->R;
-                            last_jmp_id[i] = 0xFFFFFFFFu;
-                            w->snapshot_steps = 0;
-                            memset(w->snapshot_x, 0xFF, 32);
-                            continue;
-                        }
-                    }
 
-                    if (memcmp(aff_batch[i].x, w->snapshot_x, 32) == 0) {
+                    if (X_m[i * 4 + 0] == w->snapshot_x[0] &&
+                        X_m[i * 4 + 1] == w->snapshot_x[1] &&
+                        X_m[i * 4 + 2] == w->snapshot_x[2] &&
+                        X_m[i * 4 + 3] == w->snapshot_x[3]) {
                         reset(w, w->walk_id % 2 == 0);
-                        jac_batch[i] = w->R;
+                        ECPointAffine aff;
+                        jacobianToAffine(&aff, &w->R);
+                        toMontgomeryP(&X_m[i * 4], aff.x);
+                        toMontgomeryP(&Y_m[i * 4], aff.y);
+                        memcpy(w->snapshot_x, &X_m[i * 4], 32);
+                        w->snapshot_steps = 0;
                         total_cycles.fetch_add(1, std::memory_order_relaxed);
                         continue;
                     }
 
                     w->snapshot_steps++;
                     if ((w->snapshot_steps & (w->snapshot_steps - 1)) == 0) {
-                        memcpy(w->snapshot_x, aff_batch[i].x, 32);
+                        memcpy(w->snapshot_x, &X_m[i * 4], 32);
                     }
 
-                    if (!DP(aff_batch[i].x, DP_BITS)) continue;
+                    if (!DP(&X_m[i * 4], DP_BITS)) continue;
 
                     w->snapshot_steps = 0;
                     try {
                         DPEntry found_dp;
                         bool cl = false;
-                        dp_table.lazy_emplace_l(aff_batch[i].x[0], [&](auto& bucket) {
+                        dp_table.lazy_emplace_l(X_m[i * 4 + 0], [&](auto& bucket) {
                             auto& dps = bucket.second;
                             for (const auto& entry : dps) {
-                                if (entry.x[1] == aff_batch[i].x[1] && entry.x[2] == aff_batch[i].x[2] && entry.x[3] == aff_batch[i].x[3]) {
+                                if (entry.x[1] == X_m[i * 4 + 1] && entry.x[2] == X_m[i * 4 + 2] && entry.x[3] == X_m[i * 4 + 3]) {
                                     bool same_state = (compare_uint256(w->a, entry.a) == 0) && (compare_uint256(w->b, entry.b) == 0);
                                     if (!same_state) {
                                         found_dp = entry;
@@ -1067,17 +1172,17 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                             }
                             if(!cl) {
                                 DPEntry new_entry;
-                                std::memcpy(new_entry.x, aff_batch[i].x, sizeof(new_entry.x));
+                                std::memcpy(new_entry.x, &X_m[i * 4], sizeof(new_entry.x));
                                 new_entry.a = w->a;
                                 new_entry.b = w->b;
                                 dps.push_back(new_entry);
                             }
                         }, [&](auto bucket) {
                             DPEntry entry;
-                            std::memcpy(entry.x, aff_batch[i].x, sizeof(entry.x));
+                            std::memcpy(entry.x, &X_m[i * 4], sizeof(entry.x));
                             entry.a = w->a;
                             entry.b = w->b;
-                            bucket(aff_batch[i].x[0], std::vector<DPEntry>{entry});
+                            bucket(X_m[i * 4 + 0], std::vector<DPEntry>{entry});
                         } );
 
                         if (cl) {
@@ -1150,7 +1255,12 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                                 break;
                             } else {
                                 reset(w, w->walk_id % 2 == 0);
-                                jac_batch[i] = w->R;
+                                ECPointAffine aff;
+                                jacobianToAffine(&aff, &w->R);
+                                toMontgomeryP(&X_m[i * 4], aff.x);
+                                toMontgomeryP(&Y_m[i * 4], aff.y);
+                                memcpy(w->snapshot_x, &X_m[i * 4], 32);
+                                w->snapshot_steps = 0;
                             }
                         }
                     } catch (const std::exception& e) {
@@ -1160,6 +1270,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                     }
                 }
             }
+            sync_jac();
         } catch (const std::exception& e) {
             std::cerr << RED << "\n[Thread Error]: " << e.what() << RESET << std::endl;
             search_in_progress.store(false);
@@ -1171,19 +1282,27 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
     std::thread progress_thread([&]() {
         const long double M = ldexpl(1.0L, key_range);
+        auto last_print = std::chrono::steady_clock::now();
+        unsigned long long prev_iters = total_iters.load(std::memory_order_relaxed);
         while (search_in_progress.load(std::memory_order_acquire)) {
             auto now = std::chrono::steady_clock::now();
-            if (now - last_print >= std::chrono::seconds(10)) {
-                long double k = (long double)total_iters.load(std::memory_order_relaxed);
+            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_print).count();
+            if (elapsed_ms >= 1000) {
+                unsigned long long current_iters = total_iters.load(std::memory_order_relaxed);
+                unsigned long long delta_iters = (current_iters >= prev_iters) ? (current_iters - prev_iters) : current_iters;
+                prev_iters = current_iters;
+                unsigned long long ops_1s = (elapsed_ms > 0) ? ((delta_iters * 1000ULL) / elapsed_ms) : delta_iters;
+
+                long double k = (long double)current_iters;
                 long double x = (k * k) / (2.0L * M);
                 long double d = x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
                 std::string snapointStatus = snapoint_path.empty() ? "Off" : (resumed_snapoint ? "Restored/" : "") + std::to_string(snapoint_saves.load(std::memory_order_relaxed));
                 if (snapoint_errors.load(std::memory_order_relaxed) > 0) snapointStatus += " Err:" + std::to_string(snapoint_errors.load(std::memory_order_relaxed));
-                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/10s: " << RESET << GREEN << total_iters.load() << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
+                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/1s: " << RESET << GREEN << ops_1s << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
                 last_print = now;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     });
 
