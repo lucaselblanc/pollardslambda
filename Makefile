@@ -1,7 +1,7 @@
 TARGET    := lambda
 CXX       := g++
 
-LDLIBS    := -lpthread -ldl -lrt -lcrypto
+LDLIBS    := -pthread -ldl -lrt -lcrypto
 
 SRC_CPP   := modinv.cpp lambda.cpp secp256k1.cpp
 OBJ_CPP   := $(SRC_CPP:.cpp=.o)
@@ -11,13 +11,14 @@ OBJ       := $(OBJ_CPP)
 
 all: $(TARGET)
 
-CXXFLAGS  := -g -O3 -std=c++14 -pthread -I. -MD
+CXXFLAGS  := -g -O3 -march=native -std=c++14 -pthread -I. -MD -flto=auto -fno-rtti
+LDFLAGS   := -fwhole-program
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET): $(OBJ)
-	$(CXX) $(CXXFLAGS) $(OBJ) -o $@ $(LDLIBS)
+	$(CXX) $(LDFLAGS) $(CXXFLAGS) $(OBJ) -o $@ $(LDLIBS)
 
 clean:
 	@echo "Cleaning..."
