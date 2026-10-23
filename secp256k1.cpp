@@ -169,194 +169,231 @@ static inline void imm_umul(const uint64_t *x, uint64_t y, uint64_t *dst) {
     _addcarry_u64(c, 0ULL, carry, &dst[4]);
 }
 
-__attribute__((noinline)) void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t r512[8] = {0};
+void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
+    asm volatile (
+        "movq 0(%[b]), %%rdx\n\t"
+        "mulx 0(%[a]), %%r8, %%r9\n\t"
+        "mulx 8(%[a]), %%rax, %%r10\n\t"
+        "addq %%rax, %%r9\n\t"
+        "mulx 16(%[a]), %%rax, %%r11\n\t"
+        "adcq %%rax, %%r10\n\t"
+        "mulx 24(%[a]), %%rax, %%r12\n\t"
+        "adcq %%rax, %%r11\n\t"
+        "adcq $0, %%r12\n\t"
 
-    unsigned __int128 p = (unsigned __int128)a[0] * b[0];
-    r512[0] = (uint64_t)p;
-    unsigned __int128 carry = p >> 64;
-    p = (unsigned __int128)a[1] * b[0] + carry;
-    r512[1] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[2] * b[0] + carry;
-    r512[2] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[3] * b[0] + carry;
-    r512[3] = (uint64_t)p;
-    r512[4] = (uint64_t)(p >> 64);
+        "movq 8(%[b]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 0(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r9\n\t"
+        "adoxq %%rbx, %%r10\n\t"
+        "mulx 8(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r10\n\t"
+        "adoxq %%rbx, %%r11\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 24(%[a]), %%rax, %%r13\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "adoxq %%rax, %%r13\n\t"
 
-    p = (unsigned __int128)a[0] * b[1] + r512[1];
-    r512[1] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[1] * b[1] + r512[2] + carry;
-    r512[2] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[2] * b[1] + r512[3] + carry;
-    r512[3] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[3] * b[1] + r512[4] + carry;
-    r512[4] = (uint64_t)p;
-    r512[5] = (uint64_t)(p >> 64);
+        "movq 16(%[b]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 0(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r10\n\t"
+        "adoxq %%rbx, %%r11\n\t"
+        "mulx 8(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "adoxq %%rbx, %%r13\n\t"
+        "mulx 24(%[a]), %%rax, %%r14\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r14\n\t"
+        "adoxq %%rax, %%r14\n\t"
 
-    p = (unsigned __int128)a[0] * b[2] + r512[2];
-    r512[2] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[1] * b[2] + r512[3] + carry;
-    r512[3] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[2] * b[2] + r512[4] + carry;
-    r512[4] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[3] * b[2] + r512[5] + carry;
-    r512[5] = (uint64_t)p;
-    r512[6] = (uint64_t)(p >> 64);
+        "movq 24(%[b]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 0(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 8(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "adoxq %%rbx, %%r13\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "adoxq %%rbx, %%r14\n\t"
+        "mulx 24(%[a]), %%rax, %%r15\n\t"
+        "adcxq %%rax, %%r14\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r15\n\t"
+        "adoxq %%rax, %%r15\n\t"
 
-    p = (unsigned __int128)a[0] * b[3] + r512[3];
-    r512[3] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[1] * b[3] + r512[4] + carry;
-    r512[4] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[2] * b[3] + r512[5] + carry;
-    r512[5] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)a[3] * b[3] + r512[6] + carry;
-    r512[6] = (uint64_t)p;
-    r512[7] = (uint64_t)(p >> 64);
+        "movabsq $0x1000003D1, %%rdx\n\t"
+        "mulx %%r12, %%rax, %%rbx\n\t"
+        "addq %%rax, %%r8\n\t"
+        "adcq %%rbx, %%r9\n\t"
 
-    const uint64_t K = 0x1000003D1ULL;
-    p = (unsigned __int128)r512[4] * K + r512[0];
-    r512[0] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)r512[5] * K + r512[1] + carry;
-    r512[1] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)r512[6] * K + r512[2] + carry;
-    r512[2] = (uint64_t)p;
-    carry = p >> 64;
-    p = (unsigned __int128)r512[7] * K + r512[3] + carry;
-    r512[3] = (uint64_t)p;
-    uint64_t top = (uint64_t)(p >> 64);
+        "mulx %%r13, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r9\n\t"
+        "adcq %%rbx, %%r10\n\t"
 
-    p = (unsigned __int128)top * K;
-    uint64_t al = (uint64_t)p;
-    uint64_t ah = (uint64_t)(p >> 64);
+        "mulx %%r14, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r10\n\t"
+        "adcq %%rbx, %%r11\n\t"
 
-    unsigned char c = 0;
-    c = _addcarry_u64(0, r512[0], al, &result[0]);
-    c = _addcarry_u64(c, r512[1], ah, &result[1]);
-    c = _addcarry_u64(c, r512[2], 0ULL, &result[2]);
-    _addcarry_u64(c, r512[3], 0ULL, &result[3]);
+        "mulx %%r15, %%rax, %%r12\n\t"
+        "adcq %%rax, %%r11\n\t"
+        "adcq $0, %%r12\n\t"
+
+        "mulx %%r12, %%rax, %%rbx\n\t"
+        "addq %%rax, %%r8\n\t"
+        "adcq %%rbx, %%r9\n\t"
+        "adcq $0, %%r10\n\t"
+        "adcq $0, %%r11\n\t"
+
+        "movq $0, %%rax\n\t"
+        "movabsq $0x1000003D1, %%rcx\n\t"
+        "cmovc %%rcx, %%rax\n\t"
+        "addq %%rax, %%r8\n\t"
+        "adcq $0, %%r9\n\t"
+        "adcq $0, %%r10\n\t"
+        "adcq $0, %%r11\n\t"
+
+        "movq %%r8, %%rax\n\t"
+        "addq %%rcx, %%rax\n\t"
+        "movq %%r9, %%rbx\n\t"
+        "adcq $0, %%rbx\n\t"
+        "movq %%r10, %%r12\n\t"
+        "adcq $0, %%r12\n\t"
+        "movq %%r11, %%r13\n\t"
+        "adcq $0, %%r13\n\t"
+
+        "cmovc %%rax, %%r8\n\t"
+        "cmovc %%rbx, %%r9\n\t"
+        "cmovc %%r12, %%r10\n\t"
+        "cmovc %%r13, %%r11\n\t"
+
+        "movq %%r8, 0(%[result])\n\t"
+        "movq %%r9, 8(%[result])\n\t"
+        "movq %%r10, 16(%[result])\n\t"
+        "movq %%r11, 24(%[result])\n\t"
+        :
+        : [result] "r" (result), [a] "r" (a), [b] "r" (b)
+        : "rax", "rbx", "rcx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "memory", "cc"
+    );
 }
 
-__attribute__((noinline)) void modSquareK1(uint64_t *r, const uint64_t *a) {
-    uint128_t prod;
-    uint64_t t[8] = {0};
-    uint64_t c0 = 0;
+void modSquareK1(uint64_t *r, const uint64_t *a) {
+    asm volatile (
+        "movq 0(%[a]), %%rdx\n\t"
+        "mulx 8(%[a]), %%r9, %%r10\n\t"
+        "mulx 16(%[a]), %%rax, %%r11\n\t"
+        "addq %%rax, %%r10\n\t"
+        "mulx 24(%[a]), %%rax, %%r12\n\t"
+        "adcq %%rax, %%r11\n\t"
+        "adcq $0, %%r12\n\t"
 
-    prod = (uint128_t)a[0] * a[1];
-    t[1] = (uint64_t)prod;
-    c0 = (uint64_t)(prod >> 64);
+        "movq 8(%[a]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 24(%[a]), %%rax, %%r13\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "adoxq %%rax, %%r13\n\t"
 
-    prod = (uint128_t)a[0] * a[2] + c0;
-    t[2] = (uint64_t)prod;
-    c0 = (uint64_t)(prod >> 64);
+        "movq 16(%[a]), %%rdx\n\t"
+        "mulx 24(%[a]), %%rax, %%r14\n\t"
+        "addq %%rax, %%r13\n\t"
+        "adcq $0, %%r14\n\t"
 
-    prod = (uint128_t)a[0] * a[3] + c0;
-    t[3] = (uint64_t)prod;
-    t[4] = (uint64_t)(prod >> 64);
+        "xorq %%r15, %%r15\n\t"
+        "addq %%r9, %%r9\n\t"
+        "adcq %%r10, %%r10\n\t"
+        "adcq %%r11, %%r11\n\t"
+        "adcq %%r12, %%r12\n\t"
+        "adcq %%r13, %%r13\n\t"
+        "adcq %%r14, %%r14\n\t"
+        "adcq $0, %%r15\n\t"
 
-    prod = (uint128_t)a[1] * a[2] + t[3];
-    t[3] = (uint64_t)prod;
-    c0 = (uint64_t)(prod >> 64);
+        "movq 0(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%r8, %%rax\n\t"
+        "addq %%rax, %%r9\n\t"
 
-    prod = (uint128_t)a[1] * a[3] + t[4] + c0;
-    t[4] = (uint64_t)prod;
-    t[5] = (uint64_t)(prod >> 64);
+        "movq 8(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r10\n\t"
+        "adcq %%rbx, %%r11\n\t"
 
-    prod = (uint128_t)a[2] * a[3] + t[5];
-    t[5] = (uint64_t)prod;
-    t[6] = (uint64_t)(prod >> 64);
+        "movq 16(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r12\n\t"
+        "adcq %%rbx, %%r13\n\t"
 
-    unsigned char carry = 0;
-    carry = _addcarry_u64(carry, t[1], t[1], (unsigned long long*)&t[1]);
-    carry = _addcarry_u64(carry, t[2], t[2], (unsigned long long*)&t[2]);
-    carry = _addcarry_u64(carry, t[3], t[3], (unsigned long long*)&t[3]);
-    carry = _addcarry_u64(carry, t[4], t[4], (unsigned long long*)&t[4]);
-    carry = _addcarry_u64(carry, t[5], t[5], (unsigned long long*)&t[5]);
-    carry = _addcarry_u64(carry, t[6], t[6], (unsigned long long*)&t[6]);
-    t[7] = carry;
+        "movq 24(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r14\n\t"
+        "adcq %%rbx, %%r15\n\t"
 
-    prod = (uint128_t)a[0] * a[0];
-    t[0] = (uint64_t)prod;
-    carry = _addcarry_u64(0, t[1], (uint64_t)(prod >> 64), (unsigned long long*)&t[1]);
+        "movabsq $0x1000003D1, %%rdx\n\t"
+        "mulx %%r12, %%rax, %%rbx\n\t"
+        "addq %%rax, %%r8\n\t"
+        "adcq %%rbx, %%r9\n\t"
 
-    prod = (uint128_t)a[1] * a[1];
-    carry = _addcarry_u64(carry, t[2], (uint64_t)prod, (unsigned long long*)&t[2]);
-    carry = _addcarry_u64(carry, t[3], (uint64_t)(prod >> 64), (unsigned long long*)&t[3]);
+        "mulx %%r13, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r9\n\t"
+        "adcq %%rbx, %%r10\n\t"
 
-    prod = (uint128_t)a[2] * a[2];
-    carry = _addcarry_u64(carry, t[4], (uint64_t)prod, (unsigned long long*)&t[4]);
-    carry = _addcarry_u64(carry, t[5], (uint64_t)(prod >> 64), (unsigned long long*)&t[5]);
+        "mulx %%r14, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r10\n\t"
+        "adcq %%rbx, %%r11\n\t"
 
-    prod = (uint128_t)a[3] * a[3];
-    carry = _addcarry_u64(carry, t[6], (uint64_t)prod, (unsigned long long*)&t[6]);
-    _addcarry_u64(carry, t[7], (uint64_t)(prod >> 64), (unsigned long long*)&t[7]);
+        "mulx %%r15, %%rax, %%r12\n\t"
+        "adcq %%rax, %%r11\n\t"
+        "adcq $0, %%r12\n\t"
 
-    uint64_t ah[4] = { t[4], t[5], t[6], t[7] };
-    uint64_t al[4] = { t[0], t[1], t[2], t[3] };
-    
-    uint128_t acc;
-    uint64_t s[5] = {0};
-    acc = (uint128_t)ah[0] * 0x1000003D1ULL;
-    s[0] = (uint64_t)acc;
-    uint64_t cy = (uint64_t)(acc >> 64);
+        "mulx %%r12, %%rax, %%rbx\n\t"
+        "addq %%rax, %%r8\n\t"
+        "adcq %%rbx, %%r9\n\t"
+        "adcq $0, %%r10\n\t"
+        "adcq $0, %%r11\n\t"
 
-    acc = (uint128_t)ah[1] * 0x1000003D1ULL + cy;
-    s[1] = (uint64_t)acc;
-    cy = (uint64_t)(acc >> 64);
+        "movq $0, %%rax\n\t"
+        "movabsq $0x1000003D1, %%rcx\n\t"
+        "cmovc %%rcx, %%rax\n\t"
+        "addq %%rax, %%r8\n\t"
+        "adcq $0, %%r9\n\t"
+        "adcq $0, %%r10\n\t"
+        "adcq $0, %%r11\n\t"
 
-    acc = (uint128_t)ah[2] * 0x1000003D1ULL + cy;
-    s[2] = (uint64_t)acc;
-    cy = (uint64_t)(acc >> 64);
+        "movq %%r8, %%rax\n\t"
+        "addq %%rcx, %%rax\n\t"
+        "movq %%r9, %%rbx\n\t"
+        "adcq $0, %%rbx\n\t"
+        "movq %%r10, %%r12\n\t"
+        "adcq $0, %%r12\n\t"
+        "movq %%r11, %%r13\n\t"
+        "adcq $0, %%r13\n\t"
 
-    acc = (uint128_t)ah[3] * 0x1000003D1ULL + cy;
-    s[3] = (uint64_t)acc;
-    s[4] = (uint64_t)(acc >> 64);
+        "cmovc %%rax, %%r8\n\t"
+        "cmovc %%rbx, %%r9\n\t"
+        "cmovc %%r12, %%r10\n\t"
+        "cmovc %%r13, %%r11\n\t"
 
-    carry = 0;
-    carry = _addcarry_u64(carry, al[0], s[0], (unsigned long long*)&r[0]);
-    carry = _addcarry_u64(carry, al[1], s[1], (unsigned long long*)&r[1]);
-    carry = _addcarry_u64(carry, al[2], s[2], (unsigned long long*)&r[2]);
-    carry = _addcarry_u64(carry, al[3], s[3], (unsigned long long*)&r[3]);
-
-    uint64_t h2 = s[4] + carry;
-    if (h2) {
-        acc = (uint128_t)h2 * 0x1000003D1ULL;
-        carry = 0;
-        carry = _addcarry_u64(carry, r[0], (uint64_t)acc, (unsigned long long*)&r[0]);
-        carry = _addcarry_u64(carry, r[1], (uint64_t)(acc >> 64), (unsigned long long*)&r[1]);
-        carry = _addcarry_u64(carry, r[2], 0, (unsigned long long*)&r[2]);
-        carry = _addcarry_u64(carry, r[3], 0, (unsigned long long*)&r[3]);
-        if (carry) {
-            carry = 0;
-            carry = _addcarry_u64(carry, r[0], 0x1000003D1ULL, (unsigned long long*)&r[0]);
-            carry = _addcarry_u64(carry, r[1], 0, (unsigned long long*)&r[1]);
-            carry = _addcarry_u64(carry, r[2], 0, (unsigned long long*)&r[2]);
-            _addcarry_u64(carry, r[3], 0, (unsigned long long*)&r[3]);
-        }
-    }
-
-    uint64_t diff[4];
-    unsigned char borrow = 0;
-    borrow = __builtin_ia32_sbb_u64(borrow, r[0], 0xFFFFFFFEFFFFFC2FULL, (unsigned long long*)&diff[0]);
-    borrow = __builtin_ia32_sbb_u64(borrow, r[1], 0xFFFFFFFFFFFFFFFFULL, (unsigned long long*)&diff[1]);
-    borrow = __builtin_ia32_sbb_u64(borrow, r[2], 0xFFFFFFFFFFFFFFFFULL, (unsigned long long*)&diff[2]);
-    borrow = __builtin_ia32_sbb_u64(borrow, r[3], 0xFFFFFFFFFFFFFFFFULL, (unsigned long long*)&diff[3]);
-
-    if (!borrow) {
-        r[0] = diff[0]; r[1] = diff[1]; r[2] = diff[2]; r[3] = diff[3];
-    }
+        "movq %%r8, 0(%[r])\n\t"
+        "movq %%r9, 8(%[r])\n\t"
+        "movq %%r10, 16(%[r])\n\t"
+        "movq %%r11, 24(%[r])\n\t"
+        :
+        : [r] "r" (r), [a] "r" (a)
+        : "rax", "rbx", "rcx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "memory", "cc"
+    );
 }
 
 struct Int5 {
