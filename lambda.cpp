@@ -1202,21 +1202,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                     if (last_jmp_id[i] != 0xFFFFFFFFu) {
                         uint32_t next_jmp_id = next_s_idx | (next_y_odd ? 0 : INV_FLAG);
                         if (last_jmp_id[i] == next_jmp_id) {
-                            MurmurHash3 hasher;
-                            uint32_t esc_idx = static_cast<uint32_t>(hasher(new_x[0] ^ 0xDEADBEEFULL) & (N_STEPS - 1));
-                            const StepEntry& esc_se = step_table[esc_idx];
-                            affine_point_add_fast(new_x, new_y, esc_se.x, esc_se.y);
-                            fast_scalar_add(&A_m[i * 4], &A_m[i * 4], esc_se.a);
-                            memcpy(&X_m[i * 4], new_x, 32);
-                            memcpy(&Y_m[i * 4], new_y, 32);
-                            last_jmp_id[i] = 0xFFFFFFFFu;
-                            snap_steps[i] = 0;
-                            memset(&snap_x[i * 4], 0xFF, 32);
-                            uint32_t esc_s_idx = get_step_idx(new_x, N_STEPS);
-                            bool esc_y_odd = new_y[0] & 1;
-                            cur_step_idx[i] = esc_s_idx | (esc_y_odd ? INV_FLAG : 0);
+                            next_s_idx = (next_s_idx + 1) & (N_STEPS - 1);
                             total_escapes.fetch_add(1, std::memory_order_relaxed);
-                            continue;
                         }
                     }
 
