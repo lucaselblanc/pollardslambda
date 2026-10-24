@@ -117,6 +117,16 @@ void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64
     }
 }
 
+static inline void imm_umul(const uint64_t *x, uint64_t y, uint64_t *dst) {
+    uint64_t h, carry;
+    unsigned char c = 0;
+    dst[0] = _umul128(x[0], y, &h); carry = h;
+    c = _addcarry_u64(c, _umul128(x[1], y, &h), carry, &dst[1]); carry = h;
+    c = _addcarry_u64(c, _umul128(x[2], y, &h), carry, &dst[2]); carry = h;
+    c = _addcarry_u64(c, _umul128(x[3], y, &h), carry, &dst[3]); carry = h;
+    _addcarry_u64(c, 0ULL, carry, &dst[4]);
+}
+
 void toMontgomeryP(uint64_t *result, const uint64_t *a) {
     uint64_t aLocal[4];
     for (int i = 0; i < 4; i++) aLocal[i] = a[i];
@@ -124,22 +134,18 @@ void toMontgomeryP(uint64_t *result, const uint64_t *a) {
     uint64_t temp[8] = {0};
 
     for (int i = 0; i < 4; i++) {
-        uint128_t carry = 0;
+        uint64_t prod[5];
+        imm_umul(R2_MOD_P, aLocal[i], prod);
 
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)aLocal[i] * (uint128_t)R2_MOD_P[j] + (uint128_t)temp[i + j] + carry;
-            temp[i + j] = (uint64_t)prod;
-            carry = prod >> 64;
-        }
+        unsigned char c = 0;
+        c = _addcarry_u64(c, temp[i + 0], prod[0], &temp[i + 0]);
+        c = _addcarry_u64(c, temp[i + 1], prod[1], &temp[i + 1]);
+        c = _addcarry_u64(c, temp[i + 2], prod[2], &temp[i + 2]);
+        c = _addcarry_u64(c, temp[i + 3], prod[3], &temp[i + 3]);
+        c = _addcarry_u64(c, temp[i + 4], prod[4], &temp[i + 4]);
 
-        uint128_t sum = (uint128_t)temp[i + 4] + carry;
-        temp[i + 4] = (uint64_t)sum;
-        carry = sum >> 64;
-
-        for (int k = i + 5; k < 8; k++) {
-            uint128_t s = (uint128_t)temp[k] + carry;
-            temp[k] = (uint64_t)s;
-            carry = s >> 64;
+        for (int k = i + 5; k < 8 && c; k++) {
+            c = _addcarry_u64(c, temp[k], 0, &temp[k]);
         }
     }
 
@@ -155,18 +161,6 @@ void toMontgomeryP(uint64_t *result, const uint64_t *a) {
 void fromMontgomeryP(uint64_t *result, const uint64_t *a) {
     uint64_t zero[4] = {0, 0, 0, 0};
     montgomeryReduceP(result, zero, a);
-}
-
-
-
-static inline void imm_umul(const uint64_t *x, uint64_t y, uint64_t *dst) {
-    uint64_t h, carry;
-    unsigned char c = 0;
-    dst[0] = _umul128(x[0], y, &h); carry = h;
-    c = _addcarry_u64(c, _umul128(x[1], y, &h), carry, &dst[1]); carry = h;
-    c = _addcarry_u64(c, _umul128(x[2], y, &h), carry, &dst[2]); carry = h;
-    c = _addcarry_u64(c, _umul128(x[3], y, &h), carry, &dst[3]); carry = h;
-    _addcarry_u64(c, 0ULL, carry, &dst[4]);
 }
 
 void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
@@ -739,25 +733,23 @@ bool jacobianIsInfinity(const ECPointJacobian *point) {
 }
 
 void jacobianToAffine(ECPointAffine *aff, const ECPointJacobian *jac) {
-
     if (jacobianIsInfinity(jac)) {
-        for (int i = 0; i < 4; i++)
-            aff->x[i] = aff->y[i] = 0;
+        for (int i = 0; i < 4; i++) aff->x[i] = aff->y[i] = 0;
         aff->infinity = 1;
         return;
     }
 
-    uint64_t zInv[4];
-    uint64_t zInv2[4];
-    uint64_t zInv3[4];
+    uint64_t z_std[4], zInv[4], zInv2[4], zInv3[4];
+    uint64_t x_std[4], y_std[4];
 
-    modExpMontP(zInv, jac->Z, P_CONST_MINUS_2);
-    modMulMontP(zInv2, zInv, zInv);
-    modMulMontP(zInv3, zInv2, zInv);
-    modMulMontP(aff->x, jac->X, zInv2);
-    fromMontgomeryP(aff->x, aff->x);
-    modMulMontP(aff->y, jac->Y, zInv3);
-    fromMontgomeryP(aff->y, aff->y);
+    fromMontgomeryP(z_std, jac->Z);
+    modinvP(zInv, z_std);
+    modSquareK1(zInv2, zInv);
+    modMulK1(zInv3, zInv2, zInv);
+    fromMontgomeryP(x_std, jac->X);
+    fromMontgomeryP(y_std, jac->Y);
+    modMulK1(aff->x, x_std, zInv2);
+    modMulK1(aff->y, y_std, zInv3);
 
     aff->infinity = 0;
 }
@@ -1021,15 +1013,19 @@ void scalarMulShiftVar(uint64_t r[4], const uint64_t a[4], const uint64_t b[4], 
     uint64_t t[8] = {0};
 
     for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)a[i] * b[j];
-            prod += t[i+j];
-            prod += carry;
-            t[i+j] = (uint64_t)prod;
-            carry = (uint64_t)(prod >> 64);
+        uint64_t prod[5];
+        imm_umul(b, a[i], prod);
+
+        unsigned char c = 0;
+        c = _addcarry_u64(c, t[i + 0], prod[0], &t[i + 0]);
+        c = _addcarry_u64(c, t[i + 1], prod[1], &t[i + 1]);
+        c = _addcarry_u64(c, t[i + 2], prod[2], &t[i + 2]);
+        c = _addcarry_u64(c, t[i + 3], prod[3], &t[i + 3]);
+        c = _addcarry_u64(c, t[i + 4], prod[4], &t[i + 4]);
+
+        for (int k = i + 5; k < 8 && c; k++) {
+            c = _addcarry_u64(c, t[k], 0, &t[k]);
         }
-        t[i+4] = carry;
     }
 
     int word_shift = shift / 64;
@@ -1048,15 +1044,19 @@ void scalarMul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
     uint64_t t[8] = {0};
 
     for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
+        uint64_t prod[5];
+        imm_umul(b, a[i], prod);
 
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)a[i] * b[j] + t[i + j] + carry;
-            t[i + j] = (uint64_t)prod;
-            carry = (uint64_t)(prod >> 64);
+        unsigned char c = 0;
+        c = _addcarry_u64(c, t[i + 0], prod[0], &t[i + 0]);
+        c = _addcarry_u64(c, t[i + 1], prod[1], &t[i + 1]);
+        c = _addcarry_u64(c, t[i + 2], prod[2], &t[i + 2]);
+        c = _addcarry_u64(c, t[i + 3], prod[3], &t[i + 3]);
+        c = _addcarry_u64(c, t[i + 4], prod[4], &t[i + 4]);
+
+        for (int k = i + 5; k < 8 && c; k++) {
+            c = _addcarry_u64(c, t[k], 0, &t[k]);
         }
-
-        t[i + 4] = carry;
     }
 
     static const uint64_t N_C[4] = {
@@ -1066,50 +1066,74 @@ void scalarMul(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
         0x0000000000000000ULL
     };
 
-    uint64_t acc[8] = {t[0], t[1], t[2], t[3], 0, 0, 0, 0};
-
+    uint64_t S[8] = {t[0], t[1], t[2], t[3], 0, 0, 0, 0};
     for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
-
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)t[i + 4] * N_C[j] + ( (i+j < 4) ? acc[i + j] : 0 ) + carry;
-
-            if (i + j < 4) {
-                acc[i + j] = (uint64_t)prod;
-            } else if (i + j == 4) {
-                acc[4] += (uint64_t)prod;
-            }
-
-            carry = (uint64_t)(prod >> 64);
+        uint64_t prod[5];
+        imm_umul(N_C, t[i + 4], prod);
+        unsigned char c = 0;
+        c = _addcarry_u64(c, S[i + 0], prod[0], &S[i + 0]);
+        c = _addcarry_u64(c, S[i + 1], prod[1], &S[i + 1]);
+        c = _addcarry_u64(c, S[i + 2], prod[2], &S[i + 2]);
+        c = _addcarry_u64(c, S[i + 3], prod[3], &S[i + 3]);
+        c = _addcarry_u64(c, S[i + 4], prod[4], &S[i + 4]);
+        for (int k = i + 5; k < 8 && c; k++) {
+            c = _addcarry_u64(c, S[k], 0, &S[k]);
         }
-
-        if (i < 3) acc[i + 4] += carry;
     }
 
-    uint128_t c = 0;
-
-    for (int j = 0; j < 4; j++) {
-        c = (uint128_t)acc[j] + (uint128_t)acc[4] * N_C[j] + (uint64_t)(c >> 64);
-        acc[j] = (uint64_t)c;
+    uint64_t S_high[3] = {S[4], S[5], S[6]};
+    uint64_t S2[8] = {S[0], S[1], S[2], S[3], 0, 0, 0, 0};
+    for (int i = 0; i < 3; i++) {
+        uint64_t prod[5];
+        imm_umul(N_C, S_high[i], prod);
+        unsigned char c = 0;
+        c = _addcarry_u64(c, S2[i + 0], prod[0], &S2[i + 0]);
+        c = _addcarry_u64(c, S2[i + 1], prod[1], &S2[i + 1]);
+        c = _addcarry_u64(c, S2[i + 2], prod[2], &S2[i + 2]);
+        c = _addcarry_u64(c, S2[i + 3], prod[3], &S2[i + 3]);
+        c = _addcarry_u64(c, S2[i + 4], prod[4], &S2[i + 4]);
+        for (int k = i + 5; k < 8 && c; k++) {
+            c = _addcarry_u64(c, S2[k], 0, &S2[k]);
+        }
     }
 
-    for (int iter = 0; iter < 3; iter++) {
-        uint64_t borrow = 0;
+    uint64_t h2 = S2[4];
+    uint64_t res[4] = {S2[0], S2[1], S2[2], S2[3]};
+    unsigned char top_carry = 0;
+    if (h2 != 0) {
+        uint64_t prod[5];
+        imm_umul(N_C, h2, prod);
+        unsigned char c = 0;
+        c = _addcarry_u64(c, res[0], prod[0], &res[0]);
+        c = _addcarry_u64(c, res[1], prod[1], &res[1]);
+        c = _addcarry_u64(c, res[2], prod[2], &res[2]);
+        c = _addcarry_u64(c, res[3], prod[3], &res[3]);
+        top_carry = c;
+    }
+
+    if (top_carry) {
+        unsigned char c = 0;
+        c = _addcarry_u64(c, res[0], N_C[0], &res[0]);
+        c = _addcarry_u64(c, res[1], N_C[1], &res[1]);
+        c = _addcarry_u64(c, res[2], N_C[2], &res[2]);
+        _addcarry_u64(c, res[3], N_C[3], &res[3]);
+    }
+
+    while (true) {
         uint64_t diff[4];
-        for (int i = 0; i < 4; i++) {
-            uint128_t sub = (uint128_t)acc[i] - N_CONST[i] - borrow;
-            diff[i] = (uint64_t)sub;
-            borrow = (sub >> 127) & 1;
-        }
-
-        if (!borrow) {
-            for(int i=0; i<4; i++) acc[i] = diff[i];
+        unsigned char b = 0;
+        b = _subborrow_u64(b, res[0], N_CONST[0], &diff[0]);
+        b = _subborrow_u64(b, res[1], N_CONST[1], &diff[1]);
+        b = _subborrow_u64(b, res[2], N_CONST[2], &diff[2]);
+        b = _subborrow_u64(b, res[3], N_CONST[3], &diff[3]);
+        if (!b) {
+            res[0] = diff[0]; res[1] = diff[1]; res[2] = diff[2]; res[3] = diff[3];
         } else {
             break;
         }
     }
 
-    for (int i = 0; i < 4; i++) r[i] = acc[i];
+    for (int i = 0; i < 4; i++) r[i] = res[i];
 }
 
 void scalarAdd(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]) {
