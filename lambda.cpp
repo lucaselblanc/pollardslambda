@@ -808,32 +808,22 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    //Dynamic Thermodynamic Density Model - Precision of 1000 samples, RCE = 1 ÷ √1000 ~= 3,16227766%
-    const long double SQRT2 = 1.414213562373095048801688724209698078L;
-    const long double ASYMPTOTIC_BOUND = 4.2426409336992851464L;
-    const long double LAMBDA = 0.7590869746950557992L;
-    const long double BOUNDARY_PENALTY = 1.6327208163007148536L;
-    const double BOUNDARY_CONDITION = 29.0L;
-    long double  walkers_log2 = std::log2(static_cast<long double>(WALKERS));
-    long double delta_k = static_cast<long double>(key_range) - walkers_log2;
-    long double c = ASYMPTOTIC_BOUND + BOUNDARY_PENALTY * std::exp(-LAMBDA * (delta_k - BOUNDARY_CONDITION));
-    long double m = (1.0L / SQRT2) * c;
-    long double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
+    const long double SQRT2 = sqrtl(2.0L);
+    const long double m = 3.0L;
+    const long double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
+    const int base_bit = key_range / 2;
     long double max_mult = 2.0 * m * sqrt_factor;
-    int base_bit = key_range / 2;
 
     for (int i = 15; i >= -base_bit; i--) {
-        long double power = std::pow(2.0, i);
+        const long double power = std::pow(2.0, i);
         if (max_mult >= power) {
             max_mult -= power;
-            int target_bit = base_bit + i;
+            const int target_bit = base_bit + i;
             if (target_bit >= 0 && target_bit < 256) {
                 stepSize.limbs[target_bit / 64] |= (1ULL << (target_bit % 64));
             }
         }
     }
-
-    //std::cout << "m = " << std::fixed << std::setprecision(15) << m << std::endl;
 
     struct alignas(64) StepEntry {
         uint64_t x[4];
@@ -858,7 +848,6 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
         memcpy(localStepTable[i].x_mont, aff_step.x, 32);
         memcpy(localStepTable[i].y_mont, aff_step.y, 32);
         modSubP(localStepTable[i].neg_y_mont, zero, localStepTable[i].y_mont);
-
         memcpy(step_table[i].x, aff_step.x, 32);
         memcpy(step_table[i].y, aff_step.y, 32);
         modSubP(step_table[i].neg_y, zero, aff_step.y);
@@ -1111,8 +1100,16 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
             for (int i = 0; i < local_count; i++) {
                 memcpy(&X_m[i * 4], aff_batch[i].x, 32);
                 memcpy(&Y_m[i * 4], aff_batch[i].y, 32);
-                memcpy(&snap_x[i * 4], &X_m[i * 4], 32);
-                snap_steps[i] = 0;
+                const WalkState& ws = walkers_state[id_start + i];
+                if (ws.snapshot_steps > 0 &&
+                    (ws.snapshot_x[0] != 0 || ws.snapshot_x[1] != 0 ||
+                     ws.snapshot_x[2] != 0 || ws.snapshot_x[3] != 0)) {
+                    memcpy(&snap_x[i * 4], ws.snapshot_x, 32);
+                    snap_steps[i] = ws.snapshot_steps;
+                } else {
+                    memcpy(&snap_x[i * 4], &X_m[i * 4], 32);
+                    snap_steps[i] = 0;
+                }
                 uint32_t step_idx = get_step_idx(&X_m[i * 4], N_STEPS);
                 bool negate = Y_m[i * 4] & 1;
                 cur_step_idx[i] = step_idx | (negate ? INV_FLAG : 0);
@@ -1188,11 +1185,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                     modSquareK1(lmb2, lmb);
                     modSubP(new_x, lmb2, &X_m[i * 4]);
                     modSubP(new_x, new_x, se.x);
-
                     modSubP(tmp, &X_m[i * 4], new_x);
                     modMulK1(new_y, lmb, tmp);
                     modSubP(new_y, new_y, &Y_m[i * 4]);
-
                     memcpy(&X_m[i * 4], new_x, 32);
                     memcpy(&Y_m[i * 4], new_y, 32);
 
@@ -1209,33 +1204,59 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
                     cur_step_idx[i] = next_s_idx | (next_y_odd ? INV_FLAG : 0);
 
-                    if (new_x[0] == snap_x[i * 4 + 0] &&
+                    bool cycle_hit = (
+                        new_x[0] == snap_x[i * 4 + 0] &&
                         new_x[1] == snap_x[i * 4 + 1] &&
                         new_x[2] == snap_x[i * 4 + 2] &&
-                        new_x[3] == snap_x[i * 4 + 3]) {
-                        WalkState* w = &walkers_state[id_start + i];
-                        reset(w, w->walk_id % 2 == 0);
-                        ECPointAffine aff;
-                        jacobianToAffine(&aff, &w->R);
-                        memcpy(&X_m[i * 4], aff.x, 32);
-                        memcpy(&Y_m[i * 4], aff.y, 32);
-                        memcpy(&A_m[i * 4], w->a.limbs, 32);
-                        memcpy(&snap_x[i * 4], &X_m[i * 4], 32);
-                        snap_steps[i] = 0;
-                        last_jmp_id[i] = 0xFFFFFFFFu;
-                        cur_step_idx[i] = get_step_idx(&X_m[i * 4], N_STEPS) | ((Y_m[i * 4] & 1) ? INV_FLAG : 0);
-                        total_cycles.fetch_add(1, std::memory_order_relaxed);
-                        continue;
-                    }
+                        new_x[3] == snap_x[i * 4 + 3]
+                    );
 
-                    snap_steps[i]++;
-                    if ((snap_steps[i] & (snap_steps[i] - 1)) == 0) {
-                        memcpy(&snap_x[i * 4], new_x, 32);
+                    if (cycle_hit) {
+                        total_cycles.fetch_add(1, std::memory_order_relaxed);
+                        uint32_t esc_count = static_cast<uint32_t>((snap_steps[i] >> 48) & 0xFF);
+                        if (esc_count < 3) {
+                            next_s_idx = (next_s_idx + 1) & (N_STEPS - 1);
+                            if (last_jmp_id[i] != 0xFFFFFFFFu) {
+                                uint32_t next_jmp_id = next_s_idx | (next_y_odd ? 0 : INV_FLAG);
+                                if (last_jmp_id[i] == next_jmp_id) {
+                                    next_s_idx = (next_s_idx + 1) & (N_STEPS - 1);
+                                }
+                            }
+                            cur_step_idx[i] = next_s_idx | (next_y_odd ? INV_FLAG : 0);
+                            total_escapes.fetch_add(1, std::memory_order_relaxed);
+                            memcpy(&snap_x[i * 4], new_x, 32);
+                            snap_steps[i] = (static_cast<uint64_t>(esc_count + 1) << 48);
+                        } else {
+                            WalkState* w = &walkers_state[id_start + i];
+                            reset(w, w->walk_id % 2 == 0);
+                            ECPointAffine aff;
+                            jacobianToAffine(&aff, &w->R);
+                            memcpy(&X_m[i * 4], aff.x, 32);
+                            memcpy(&Y_m[i * 4], aff.y, 32);
+                            memcpy(&A_m[i * 4], w->a.limbs, 32);
+                            memcpy(&snap_x[i * 4], &X_m[i * 4], 32);
+                            snap_steps[i] = 0;
+                            last_jmp_id[i] = 0xFFFFFFFFu;
+                            cur_step_idx[i] = get_step_idx(&X_m[i * 4], N_STEPS) | ((Y_m[i * 4] & 1) ? INV_FLAG : 0);
+                            continue;
+                        }
+                    } else {
+                        uint64_t count = snap_steps[i] & 0x0000FFFFFFFFFFFFULL;
+                        uint64_t esc_count = snap_steps[i] >> 48;
+                        count++;
+                        if ((count & (count - 1)) == 0) {
+                            memcpy(&snap_x[i * 4], new_x, 32);
+                            if (count >= 1024) {
+                                esc_count = 0;
+                            }
+                        }
+                        snap_steps[i] = (esc_count << 48) | (count & 0x0000FFFFFFFFFFFFULL);
                     }
 
                     if (!DP(new_x, DP_BITS)) continue;
 
                     snap_steps[i] = 0;
+                    memcpy(&snap_x[i * 4], new_x, 32);
                     WalkState* w = &walkers_state[id_start + i];
                     memcpy(w->a.limbs, &A_m[i * 4], 32);
                     try {
@@ -1316,14 +1337,11 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                                 uint256_t db_sum = mod_add_N(w->b, found_dp.b);
                                 if (!scalarIsZero(db_sum.limbs)) {
                                     uint256_t inv_db_sum = modinv(db_sum, N);
-
                                     uint64_t neg_da[4];
                                     memcpy(neg_da, da_sum.limbs, 32);
                                     scalarNeg(neg_da, neg_da);
-
                                     uint64_t res_k[4];
                                     scalarMul(res_k, neg_da, inv_db_sum.limbs);
-
                                     uint64_t neg_k[4];
                                     scalarNeg(neg_k, res_k);
 
@@ -1372,11 +1390,12 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
     std::thread progress_thread([&]() {
         const long double M = ldexpl(1.0L, key_range);
-        auto last_print = std::chrono::steady_clock::now();
+        using Clock = std::chrono::steady_clock;
+        auto last = Clock::now();
         unsigned long long prev_iters = total_iters.load(std::memory_order_relaxed);
         while (search_in_progress.load(std::memory_order_acquire)) {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_print).count();
+            auto now = Clock::now();
+            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
             if (elapsed_ms >= 1000) {
                 unsigned long long current_iters = total_iters.load(std::memory_order_relaxed);
                 unsigned long long delta_iters = (current_iters >= prev_iters) ? (current_iters - prev_iters) : current_iters;          
@@ -1386,13 +1405,13 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                 long double x = (k * k) / (2.0L * M);
                 long double d = x;
                 long double prob = (1.0L - expl(-d)) * 100.0L;
+                last = now;
                 std::string snapointStatus = snapoint_path.empty() ? "Off" : (resumed_snapoint ? "Restored/" : "") + std::to_string(snapoint_saves.load(std::memory_order_relaxed));
                 if (snapoint_errors.load(std::memory_order_relaxed) > 0) snapointStatus += " Err:" + std::to_string(snapoint_errors.load(std::memory_order_relaxed));
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/1s: " << RESET << GREEN << ops_1s << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
-                last_print = std::chrono::steady_clock::now();
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/1s: " << RESET << GREEN << ops_1s << RESET << "\n" << CYAN << "\033[2KDetected Cycles: " << RESET << GREEN << total_cycles.load() << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
     });
 
@@ -1646,7 +1665,21 @@ int main(int argc, char* argv[]) {
     double relative_pos = (key_val - range_start) / (range_end - range_start);
     double percentage = relative_pos * 100.0;
 
-    std::string healthK = kFactor < 2 ? " - \033[92mStatistics Luck!\033[0m" : " - \033[91mStatistical Bad Luck!\033[0m";
+    const long double prob_50 = sqrtl(2.0L * logl(2.0L));
+    const long double prob_54 = sqrtl(acosl(-1.0L) / 2.0L);
+
+    std::string healthK;
+
+    if (kFactor <= prob_50) {
+        healthK = " - \033[92mExceptional Statistical Luck!\033[0m";
+    }
+    else if (kFactor <= prob_54) {
+        healthK = " - \033[92mGood Statistical Luck!\033[0m";
+    }
+    else {
+        healthK = " - \033[93mK-Factor Above The Ideal Reference!\033[0m";
+    }
+
     std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
     std::cout << CYAN << "[K-Factor] : " << RESET << PINK << std::fixed << std::setprecision(4) << (double)kFactor << healthK << RESET << std::endl;
     std::cout << CYAN << "[Total OPS]: " << RESET << PINK << ops << RESET << std::endl;
