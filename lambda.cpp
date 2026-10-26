@@ -1388,8 +1388,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                 long double prob = (1.0L - expl(-d)) * 100.0L;
                 std::string snapointStatus = snapoint_path.empty() ? "Off" : (resumed_snapoint ? "Restored/" : "") + std::to_string(snapoint_saves.load(std::memory_order_relaxed));
                 if (snapoint_errors.load(std::memory_order_relaxed) > 0) snapointStatus += " Err:" + std::to_string(snapoint_errors.load(std::memory_order_relaxed));
+                std::this_thread::sleep_for(std::chrono::seconds(1));
                 std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/1s: " << RESET << GREEN << ops_1s << RESET << "\n" << CYAN << "\033[2KSelf-Collision Cycles: " << RESET << GREEN << total_cycles.load() << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
-                last_print = now;
+                last_print = std::chrono::steady_clock::now();
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
