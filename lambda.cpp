@@ -28,7 +28,7 @@ const std::string& ORANGE = "\033[38;2;255;128;0m";
 const std::string& RESET = "\033[0m";
 const char* BASE_58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-unsigned long long ops;
+unsigned long long ops, ops_ps;
 long double sqrtM, kFactor;
 int snaptime_sec = 20;
 
@@ -373,6 +373,13 @@ std::string format_number(long double n) {
     for (int i = (int)s.size() - 3; i > 0; i -= 3)
         s.insert(i, ".");
     return s;
+}
+
+std::string format_time(long double time)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << time;
+    return oss.str();
 }
 
 auto cores = std::thread::hardware_concurrency();
@@ -815,11 +822,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    const long double SQRT2 = sqrtl(2.0L);
-    const long double m = 3.0L;
-    const long double sqrt_factor = (key_range % 2 != 0) ? SQRT2 : 1.0;
     const int base_bit = key_range / 2;
-    long double max_mult = 2.0 * m * sqrt_factor;
+    long double max_mult = 6.0L;
 
     for (int i = 15; i >= -base_bit; i--) {
         const long double power = std::pow(2.0, i);
@@ -969,7 +973,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::cout << CYAN << "Min Range: " << RESET << gradient_zeros(uint256_to_hex(min_scalar), DARK_PINK, PINK) << std::endl;
     std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET;
-    std::cout << "\n\n\n\n";
+    std::cout << "\n\n\n\n\n\n";
     std::string header = "\033[96m[!] Loading Walkers... \033[0m";
 
     if (!resumed_snapoint)
@@ -1396,10 +1400,11 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     };
 
     std::thread progress_thread([&]() {
-        const long double M = ldexpl(1.0L, key_range);
+        const long double M = ldexpl(1.0L, (key_range - 1));
         using Clock = std::chrono::steady_clock;
         auto last = Clock::now();
         unsigned long long prev_iters = total_iters.load(std::memory_order_relaxed);
+        
         while (search_in_progress.load(std::memory_order_acquire)) {
             auto now = Clock::now();
             auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
@@ -1407,7 +1412,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                 unsigned long long current_iters = total_iters.load(std::memory_order_relaxed);
                 unsigned long long delta_iters = (current_iters >= prev_iters) ? (current_iters - prev_iters) : current_iters;          
                 prev_iters = current_iters;
-                unsigned long long ops_1s = (elapsed_ms > 0) ? static_cast<unsigned long long>((static_cast<long double>(delta_iters) * 1000.0L) / static_cast<long double>(elapsed_ms)) : delta_iters;
+                ops_ps = (elapsed_ms > 0) ? static_cast<unsigned long long>((static_cast<long double>(delta_iters) * 1000.0L) / static_cast<long double>(elapsed_ms)) : delta_iters;
                 long double k = (long double)current_iters;
                 long double x = (k * k) / (2.0L * M);
                 long double d = x;
@@ -1416,7 +1421,63 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                 std::string snapointStatus = snapoint_path.empty() ? "Off" : (resumed_snapoint ? "Restored/" : "") + std::to_string(snapoint_saves.load(std::memory_order_relaxed));
                 if (snapoint_errors.load(std::memory_order_relaxed) > 0) snapointStatus += " Err:" + std::to_string(snapoint_errors.load(std::memory_order_relaxed));
                 std::this_thread::sleep_for(std::chrono::seconds(2));
-                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/1s: " << RESET << GREEN << format_number(ops_1s) << RESET << "\n" << CYAN << "\033[2KDetected Cycles: " << RESET << GREEN << format_number(total_cycles.load()) << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
+
+                const auto exp_time = [&]() -> long double
+                {
+                    const long double b = std::ldexp(1.0L, (key_range - 1));
+                    const long double theta = std::ldexp(1.0L, -DP_BITS);
+                    const long double t = static_cast<long double>(cores) / static_cast<long double>(ops_ps);
+                    const long double exp_steps = (2.0L * std::sqrt(b) / static_cast<long double>(cores)) + (1.0L / theta);
+                    return exp_steps * t;
+                };
+            
+                const long double time = exp_time();
+                const long double minutes = time / 60.0L;
+                const long double hours   = minutes / 60.0L;
+                const long double days    = hours / 24.0L;
+                const long double years   = days / 365.25L;
+            
+                std::string exp_time_str;
+            
+                if (time < 60.0L)
+                {
+                    exp_time_str = "~" + format_time(time) + " seconds";
+                }
+                else if (minutes < 60.0L)
+                {
+                    exp_time_str = "~" + format_time(minutes) + " minutes";
+                }
+                else if (hours < 24.0L)
+                {
+                    exp_time_str = "~" + format_time(hours) + " hours";
+                }
+                else if (days < 365.25L)
+                {
+                    exp_time_str = "~" + format_time(days) + " days";
+                }
+                else
+                {
+                    exp_time_str = "~" + format_time(years) + " years";
+                }
+
+                std::cout << CYAN << "\033[5A\r"
+                    << "\033[2KTotal Ops/1s: " << RESET << GREEN
+                    << format_number(ops_ps) << RESET
+                    << "\n"
+                    << CYAN << "\033[2KDetected Cycles: " << RESET << GREEN
+                    << format_number(total_cycles.load()) << RESET
+                    << "\n"
+                    << CYAN << "\033[2KCollision Probability: " << RESET << GREEN
+                    << std::fixed << std::setprecision(8)
+                    << prob << "...%" << RESET
+                    << "\n"
+                    << CYAN << "\033[2KSnapoints: " << RESET << GREEN
+                    << snapointStatus << RESET
+                    << "\n"
+                    << CYAN << "\033[2KExpected Time: " << RESET << GREEN
+                    << exp_time_str << RESET
+                    << "\n" <<
+                std::flush;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
