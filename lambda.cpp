@@ -368,6 +368,13 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
     std::cout << " " << std::fixed << std::setprecision(1) << (percent * 100.0) << "%" << std::endl;
 }
 
+std::string format_number(long double n) {
+    std::string s = std::to_string((unsigned long long)n);
+    for (int i = (int)s.size() - 3; i > 0; i -= 3)
+        s.insert(i, ".");
+    return s;
+}
+
 auto cores = std::thread::hardware_concurrency();
 int windowSize;
 
@@ -1409,7 +1416,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                 std::string snapointStatus = snapoint_path.empty() ? "Off" : (resumed_snapoint ? "Restored/" : "") + std::to_string(snapoint_saves.load(std::memory_order_relaxed));
                 if (snapoint_errors.load(std::memory_order_relaxed) > 0) snapointStatus += " Err:" + std::to_string(snapoint_errors.load(std::memory_order_relaxed));
                 std::this_thread::sleep_for(std::chrono::seconds(2));
-                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/1s: " << RESET << GREEN << ops_1s << RESET << "\n" << CYAN << "\033[2KDetected Cycles: " << RESET << GREEN << total_cycles.load() << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
+                std::cout << CYAN << "\033[3A\r" << "\033[2KTotal Ops/1s: " << RESET << GREEN << format_number(ops_1s) << RESET << "\n" << CYAN << "\033[2KDetected Cycles: " << RESET << GREEN << format_number(total_cycles.load()) << RESET << "\n" << CYAN << "\033[2KCollision Probability: " << RESET << GREEN << std::fixed << std::setprecision(8) << (prob) << "...%" << RESET << CYAN << " | Snapoints: " << RESET << PINK << snapointStatus << RESET << "\n" << std::flush;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
@@ -1667,6 +1674,8 @@ int main(int argc, char* argv[]) {
 
     const long double prob_50 = sqrtl(2.0L * logl(2.0L));
     const long double prob_54 = sqrtl(acosl(-1.0L) / 2.0L);
+    const long double estimated_ops = prob_50 * std::pow(2.0L, (key_range - 1) / 2.0L);
+    const long double statistical_penalty = (double)ops > estimated_ops ? (double)ops - estimated_ops : 0.0L;
 
     std::string healthK;
 
@@ -1682,7 +1691,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << CYAN << "[% Of The Range]: " << RESET << PINK << std::fixed << std::setprecision(2) << percentage << "%" << RESET << std::endl;
     std::cout << CYAN << "[K-Factor] : " << RESET << PINK << std::fixed << std::setprecision(4) << (double)kFactor << healthK << RESET << std::endl;
-    std::cout << CYAN << "[Total OPS]: " << RESET << PINK << ops << RESET << std::endl;
+    std::cout << CYAN << "[Estimated OPS]: " << RESET << PINK << format_number(estimated_ops) << RESET << std::endl;
+    std::cout << CYAN << "[Total OPS]: " << RESET << PINK << format_number(ops) << RESET << std::endl;
+    std::cout << CYAN << "[Statistical Penalty]: " << RESET << PINK << format_number(statistical_penalty) << RESET << std::endl;
 
     delete[] preCompG;
     delete[] preCompGphi;
