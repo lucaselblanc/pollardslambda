@@ -1275,8 +1275,11 @@ void generatePublicKey(ECPointJacobian *preCompTable, ECPointJacobian *preCompTa
     serializePublicKey(out, &pub);
 }
 
-void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]) {
+bool decompressAndValidatePublicKey(ECPointAffine* out, const unsigned char compressed[33]) {
     unsigned char prefix = compressed[0];
+    if (prefix != 0x02 && prefix != 0x03) {
+        return false;
+    }
 
     for (int i = 0; i < 4; i++) {
         uint64_t word = 0;
@@ -1284,6 +1287,18 @@ void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33])
             word = (word << 8) | compressed[1 + i * 8 + j];
         }
         out->x[3 - i] = word;
+    }
+
+    bool is_zero = true;
+    for (int i = 0; i < 4; i++) {
+        if (out->x[i] != 0) { is_zero = false; break; }
+    }
+    if (is_zero) return false;
+
+    for (int i = 3; i >= 0; i--) {
+        if (out->x[i] > P_CONST[i]) return false;
+        if (out->x[i] < P_CONST[i]) break;
+        if (i == 0) return false;
     }
 
     uint64_t x_mont[4], x2[4], x3[4], rhs[4];
@@ -1295,6 +1310,15 @@ void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33])
 
     uint64_t y_mont[4];
     sqrtModP(y_mont, rhs);
+
+    uint64_t y2_test[4];
+    modMulMontP(y2_test, y_mont, y_mont);
+    for (int i = 0; i < 4; i++) {
+        if (y2_test[i] != rhs[i]) {
+            return false;
+        }
+    }
+
     fromMontgomeryP(out->y, y_mont);
 
     uint64_t is_odd   = out->y[0] & 1ULL;
@@ -1305,4 +1329,9 @@ void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33])
     }
 
     out->infinity = 0;
+    return true;
+}
+
+void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]) {
+    decompressAndValidatePublicKey(out, compressed);
 }
