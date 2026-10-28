@@ -89,6 +89,7 @@ uint256_t modinv(uint256_t base, uint256_t mod);
 
 void affineToJacobian(ECPointJacobian *jac, const ECPointAffine *aff);
 void decompressPublicKey(ECPointAffine* out, const unsigned char compressed[33]);
+bool decompressAndValidatePublicKey(ECPointAffine* out, const unsigned char compressed[33]);
 void endomorphismMap(ECPointJacobian *R, const ECPointJacobian *P);
 void fromMontgomeryP(uint64_t *result, const uint64_t *a);
 void generatePublicKey(ECPointJacobian *preCompTable, ECPointJacobian *preCompTablePhi, unsigned char *out, const uint64_t *PRIV_KEY, int windowSize);
@@ -104,6 +105,7 @@ void modMulMontP(uint64_t *result, const uint64_t *a, const uint64_t *b);
 void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b);
 void modSquareK1(uint64_t *result, const uint64_t *a);
 void modinvP(uint64_t *result, const uint64_t *a);
+
 static inline void modAddP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
     uint64_t sum[4];
     unsigned char c = 0;
@@ -140,6 +142,7 @@ static inline void modSubP(uint64_t *result, const uint64_t *a, const uint64_t *
     borrow = _subborrow_u64(borrow, diff[2], 0, &result[2]);
     _subborrow_u64(borrow, diff[3], 0, &result[3]);
 }
+
 void modExpMontP(uint64_t *res, const uint64_t *base, const uint64_t *exp);
 void pointInitJacobian(ECPointJacobian *P);
 void pointAddJacobian(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJacobian *Q);
