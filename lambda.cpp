@@ -409,16 +409,26 @@ std::string gradient_zeros(std::string hex, const std::string& color_1, const st
     return color_1 + leading_zeros + RESET + color_2 + value + RESET;
 }
 
+static inline int hex_digit_to_val(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
     if (hex.length() % 2 != 0) {
-        throw std::invalid_argument("The hexadecimal string must have n pairs of characters!");
+        throw std::invalid_argument("The hexadecimal string must have an even number of characters!");
     }
 
     std::vector<unsigned char> bytes(hex.size() / 2);
     for (size_t i = 0; i < bytes.size(); i++) {
-        bytes[i] = static_cast<unsigned char>(
-            std::stoi(hex.substr(2 * i, 2), nullptr, 16)
-        );
+        int hi = hex_digit_to_val(hex[2 * i]);
+        int lo = hex_digit_to_val(hex[2 * i + 1]);
+        if (hi < 0 || lo < 0) {
+            throw std::invalid_argument("Invalid hexadecimal character encountered!");
+        }
+        bytes[i] = static_cast<unsigned char>((hi << 4) | lo);
     }
     return bytes;
 }
@@ -705,6 +715,8 @@ static inline uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
 
 
 bool DP(const uint64_t* affine_x, int DP_BITS) {
+    if (DP_BITS <= 0) return false;
+    if (DP_BITS >= 64) return (affine_x[0] == 0);
     return (affine_x[0] & ((1ULL << DP_BITS) - 1)) == 0;
 }
 
@@ -765,6 +777,11 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
 }
 
 uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int DP_BITS, const std::string& snapoint_path, int snaptime_sec) {
+    if (WALKERS <= 0 || key_range < 2 || key_range > 256) {
+        std::cerr << RED << "[ERROR] Invalid parameters passed to lambda()." << RESET << std::endl;
+        return {};
+    }
+
     std::atomic<bool> search_in_progress(true);
     std::atomic<int> loaded_walkers{0};
     std::atomic<unsigned long long> total_iters{0};
@@ -797,7 +814,10 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     auto target_pubkey = hex_to_bytes(target_pubkey_hex);
     ECPointAffine target_affine{};
     ECPointJacobian target_affine_jac{};
-    decompressPublicKey(&target_affine, target_pubkey.data());
+    if (!decompressAndValidatePublicKey(&target_affine, target_pubkey.data())) {
+        std::cerr << RED << "[ERROR] Target public key is not on secp256k1 curve." << RESET << std::endl;
+        return {};
+    }
     affineToJacobian(&target_affine_jac, &target_affine);
 
     uint64_t shift_arr[4];
@@ -822,19 +842,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    const int base_bit = key_range / 2;
-    long double max_mult = 6.0L;
-
-    for (int i = 15; i >= -base_bit; i--) {
-        const long double power = std::pow(2.0, i);
-        if (max_mult >= power) {
-            max_mult -= power;
-            const int target_bit = base_bit + i;
-            if (target_bit >= 0 && target_bit < 256) {
-                stepSize.limbs[target_bit / 64] |= (1ULL << (target_bit % 64));
-            }
-        }
-    }
+    const int target_bit = ((key_range - 1) / 2) + 4;
+    stepSize.limbs[target_bit / 64] = (1ULL << (target_bit % 64));
 
     struct alignas(64) StepEntry {
         uint64_t x[4];
@@ -1490,9 +1499,10 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
         return k;
     }
 
-    if (cores == 0) cores = 2;
+    if (cores == 0) cores = 1;
     cores = std::min<unsigned int>(cores, WALKERS);
-    int chunk = WALKERS / cores;
+    int chunk = (cores > 0) ? (WALKERS / cores) : WALKERS;
+    if (chunk == 0) chunk = 1;
     snapoint_thread_count = cores;
 
     for (unsigned int t = 0; t < cores; t++) {
@@ -1505,8 +1515,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     if (!snapoint_path.empty() && snaptime_sec > 0) {
         snapoint_thread = std::thread([&]() {
             while (search_in_progress.load(std::memory_order_acquire)) {
-                int waited_ms = 0;
-                int interval_ms = snaptime_sec * 1000;
+                int64_t waited_ms = 0;
+                int64_t interval_ms = static_cast<int64_t>(snaptime_sec) * 1000;
                 while (waited_ms < interval_ms && search_in_progress.load(std::memory_order_acquire)) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                     waited_ms += 200;
@@ -1612,12 +1622,59 @@ std::string HexToWif(const std::string& hexKey) {
     return EncodeBase58Check(payload);
 }
 
+static bool parse_int_safe(const std::string& str, int& out_val, int min_val, int max_val, const std::string& param_name) {
+    if (str.empty()) {
+        std::cerr << RED << "[ERROR] Parameter '" << param_name << "' value cannot be empty." << RESET << std::endl;
+        return false;
+    }
+    char* endptr = nullptr;
+    errno = 0;
+    long val = std::strtol(str.c_str(), &endptr, 10);
+    if (errno == ERANGE || val < min_val || val > max_val) {
+        std::cerr << RED << "[ERROR] Parameter '" << param_name << "' value out of range [" 
+                  << min_val << " - " << max_val << "]: " << str << RESET << std::endl;
+        return false;
+    }
+    if (endptr == str.c_str() || *endptr != '\0') {
+        std::cerr << RED << "[ERROR] Invalid integer format for parameter '" << param_name << "': " 
+                  << str << RESET << std::endl;
+        return false;
+    }
+    out_val = static_cast<int>(val);
+    return true;
+}
+
+static bool validate_hex_pubkey(const std::string& hex) {
+    if (hex.length() != 66) {
+        std::cerr << RED << "[ERROR] The Compressed Public Key Must Be Exactly 66 Characters Long, Prefix 02/03 + 64 Hex." << RESET << std::endl;
+        std::cerr << "Current Length: " << hex.length() << std::endl;
+        return false;
+    }
+    std::string prefix = hex.substr(0, 2);
+    if (prefix != "02" && prefix != "03") {
+        std::cerr << RED << "[ERROR] Unusual Compressed Key Prefix: " << prefix << ", Expected: 02/03." << RESET << std::endl;
+        std::cerr << "Prefix Entered: " << prefix << std::endl;
+        return false;
+    }
+    for (size_t i = 2; i < 66; ++i) {
+        if (!std::isxdigit(static_cast<unsigned char>(hex[i]))) {
+            std::cerr << RED << "[ERROR] Invalid hexadecimal character at position " << i << ": '" << hex[i] << "'" << RESET << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     std::string pub_key_hex;
-    int key_range;
-    int walkers;
+    int key_range = 0;
+    int walkers = 0;
     int dp = -1;
     std::string snapoint_path;
+
+    bool has_pubkey = false;
+    bool has_keyrange = false;
+    bool has_walkers = false;
 
     if (argc == 1) {
         std::cout << "The Parameters Cannot Be Empty!" << std::endl;
@@ -1627,22 +1684,84 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 
-        if (arg == "--pubkey" && i + 1 < argc) {
+        if (arg.rfind("--", 0) == 0) {
+            std::string option = arg.substr(0, arg.find('='));
+
+            for (int j = 1; j < i; ++j) {
+                std::string previous = argv[j];
+
+                if (previous.rfind("--", 0) != 0) {
+                    continue;
+                }
+
+                previous = previous.substr(0, previous.find('='));
+
+                if (option == previous) {
+                    std::cerr << RED << "[ERROR] Duplicate option: " << option << RESET << std::endl;
+                    return 1;
+                }
+            }
+        }
+
+        if (arg == "--pubkey") {
+            if (i + 1 >= argc) {
+                std::cerr << RED << "[ERROR] Missing value for --pubkey" << RESET << std::endl;
+                return 1;
+            }
             pub_key_hex = argv[++i];
-        } else if (arg == "--keyrange" && i + 1 < argc) {
-            key_range = std::stoi(argv[++i]);
-        } else if (arg == "--walkers" && i + 1 < argc) {
-            walkers = std::stoi(argv[++i]);
-        } else if (arg == "--dp" && i + 1 < argc) {
-            dp = std::stoi(argv[++i]);
-        }
-          else if (arg == "--snaptime" && i + 1 < argc) {
-            snaptime_sec = std::stoi(argv[++i]);
-        }
-          else if (arg == "--t" && i + 1 < argc) {
-            cores = std::stoi(argv[++i]);
-        }
-        else {
+            has_pubkey = true;
+        } else if (arg == "--keyrange") {
+            if (i + 1 >= argc || !parse_int_safe(argv[++i], key_range, 2, 256, "--keyrange")) {
+                if(i + 1 >= argc) {
+                    std::cerr << RED << "[ERROR] Missing value for --keyrange" << RESET << std::endl;
+                } else {
+                    std::cerr << RED << "[ERROR] Invalid value for --keyrange" << RESET << std::endl;
+                }
+                return 1;
+            }
+            has_keyrange = true;
+        } else if (arg == "--walkers") {
+            if (i + 1 >= argc || !parse_int_safe(argv[++i], walkers, 1024, 1048576, "--walkers")) {
+                if(i + 1 >= argc) {
+                    std::cerr << RED << "[ERROR] Missing value for --walkers" << RESET << std::endl;
+                } else {
+                    std::cerr << RED << "[ERROR] Invalid value for --walkers" << RESET << std::endl;
+                }
+                return 1;
+            }
+            has_walkers = true;
+        } else if (arg == "--dp") {
+            if (i + 1 >= argc || !parse_int_safe(argv[++i], dp, 1, 16, "--dp")) {
+                if(i + 1 >= argc) {
+                    std::cerr << RED << "[ERROR] Missing value for --dp" << RESET << std::endl;
+                } else {
+                    std::cerr << RED << "[ERROR] Invalid value for --dp" << RESET << std::endl;
+                }
+                return 1;
+            }
+        } else if (arg == "--snaptime") {
+            int st = 0;
+            if (i + 1 >= argc || !parse_int_safe(argv[++i], st, 0, 86400, "--snaptime")) {
+                if(i + 1 >= argc) {
+                    std::cerr << RED << "[ERROR] Missing value for --snaptime" << RESET << std::endl;
+                } else {
+                    std::cerr << RED << "[ERROR] Invalid value for --snaptime" << RESET << std::endl;
+                }
+                return 1;
+            }
+            snaptime_sec = st;
+        } else if (arg == "--t") {
+            int t_val = 0;
+            if (i + 1 >= argc || !parse_int_safe(argv[++i], t_val, 1, 1024, "--t")) {
+                if(i + 1 >= argc) {
+                    std::cerr << RED << "[ERROR] Missing value for --t" << RESET << std::endl;
+                } else {
+                    std::cerr << RED << "[ERROR] Invalid value for --t" << RESET << std::endl;
+                }
+                return 1;
+            }
+            cores = static_cast<unsigned int>(t_val);
+        } else {
             std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
             std::cerr << ORANGE << "[USAGE]: " << RESET << GREEN << argv[0] << RESET << " --? <?> --? <?> --? <?>\n"
             << GREEN << "*" << RESET << " --pubkey        => Compressed Public Key        <hex> ("<< RED << "*" << RESET << "Required)\n"
@@ -1656,30 +1775,34 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (pub_key_hex.length() != 66) {
-        std::cerr << RED << "[ERROR] The Compressed Public Key Must Be Exactly 66 Characters Long, Prefix 02/03 + 64 Hex." << RESET << std::endl;
-        std::cerr << "Current Length: " << pub_key_hex.length() << std::endl;
+    if (!has_pubkey || !has_keyrange || !has_walkers) {
+        std::cerr << RED << "[ERROR] Missing required parameters: --pubkey, --keyrange, and --walkers are mandatory." << RESET << std::endl;
         return 1;
     }
 
-    std::string prefix = pub_key_hex.substr(0, 2);
-    if (prefix != "02" && prefix != "03") {
-        std::cerr << RED << "[ERROR] Unusual Compressed Key Prefix: " << prefix <<", Expected: 02/03." << RESET << std::endl;
-        std::cerr << "Prefix Entered: " << prefix << std::endl;
+    if (!validate_hex_pubkey(pub_key_hex)) {
         return 1;
     }
 
-    if (key_range < 2 || key_range > 256) {
-        std::cerr << RED << "[ERROR] Key Range Outside Permitted Limits (2 - 256)." << RESET << std::endl;
-        std::cerr << "Value Entered: " << key_range << std::endl;
+    std::vector<unsigned char> target_pubkey;
+    try {
+        target_pubkey = hex_to_bytes(pub_key_hex);
+    } catch (const std::exception& e) {
+        std::cerr << RED << "[ERROR] Hex conversion error: " << e.what() << RESET << std::endl;
+        return 1;
+    }
+
+    ECPointAffine target_affine{};
+    if (!decompressAndValidatePublicKey(&target_affine, target_pubkey.data())) {
+        std::cerr << RED << "[ERROR] Invalid public key: Point is not on secp256k1 curve or out of field bounds." << RESET << std::endl;
         return 1;
     }
 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
-    if (dp < 0 || dp > static_cast<int>(sizeof(int32_t) * CHAR_BIT)) {
+    if (dp <= 0 || dp > 32) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
+        dp = std::max<int>(1, std::min<int>(key_range >> 2, 32));
     }
 
     if (snapoint_path.empty()) {
@@ -1693,18 +1816,36 @@ int main(int argc, char* argv[]) {
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snapoints File: " << RESET << CYAN << snapoint_path << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snaptime Interval: " << RESET << PINK << snaptime_sec << RESET << GREEN << "s" << RESET << std::endl;
-    uint64_t max_throughput = cores * 512ULL;
-    if (walkers != max_throughput) {
+    uint64_t max_throughput = static_cast<uint64_t>(cores) * 512ULL;
+    if (static_cast<uint64_t>(walkers) != max_throughput) {
         std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, Maximum Throughput Reached At: ~" << RESET << PINK << max_throughput << RESET << "." << std::endl;
     }
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
 
     uint256_t found_key = lambda(pub_key_hex, key_range, walkers, dp, snapoint_path, snaptime_sec);
 
+    auto cleanup_precomp = []() {
+        delete[] preCompG; preCompG = nullptr;
+        delete[] preCompGphi; preCompGphi = nullptr;
+        delete[] preCompH; preCompH = nullptr;
+        delete[] preCompHphi; preCompHphi = nullptr;
+        delete[] jacNorm; jacNorm = nullptr;
+        delete[] jacNormH; jacNormH = nullptr;
+        delete[] jacEndo; jacEndo = nullptr;
+        delete[] jacEndoH; jacEndoH = nullptr;
+    };
+
+    bool is_zero_key = (found_key.limbs[0] == 0 && found_key.limbs[1] == 0 && found_key.limbs[2] == 0 && found_key.limbs[3] == 0);
+
+    if (is_zero_key) {
+        std::cerr << RED << "[ERROR] Search terminated without finding a key." << RESET << std::endl;
+        cleanup_precomp();
+        return 1;
+    }
+
     std::cout << GREEN << "[SUCCESS!] " << RESET << "Collision Found!" << std::endl;
 
     unsigned char test_pub[33];
-    auto target_pubkey = hex_to_bytes(pub_key_hex);
     generatePublicKey(preCompG, preCompGphi, test_pub, found_key.limbs, windowSize);
 
     if (memcmp(test_pub, target_pubkey.data(), 33) != 0) {
@@ -1756,13 +1897,6 @@ int main(int argc, char* argv[]) {
     std::cout << CYAN << "[Total OPS]: " << RESET << PINK << format_number(ops) << RESET << std::endl;
     std::cout << CYAN << "[Statistical Penalty]: " << RESET << PINK << format_number(statistical_penalty) << RESET << std::endl;
 
-    delete[] preCompG;
-    delete[] preCompGphi;
-    delete[] preCompH;
-    delete[] preCompHphi;
-    delete[] jacNorm;
-    delete[] jacNormH;
-    delete[] jacEndo;
-    delete[] jacEndoH;
+    cleanup_precomp();
     return 0;
 }
