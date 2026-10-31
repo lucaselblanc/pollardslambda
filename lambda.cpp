@@ -842,8 +842,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::mt19937_64 salt(target_affine.x[0]);
 
     uint256_t stepSize = {};
-    const int target_bit = ((key_range - 1) / 2) + 4;
-    stepSize.limbs[target_bit / 64] = (1ULL << (target_bit % 64));
+    stepSize.limbs[((key_range - 1) / 2) / 64] = 1ULL << (((key_range - 1) / 2) % 64);
 
     struct alignas(64) StepEntry {
         uint64_t x[4];
@@ -856,9 +855,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::vector<StepEntry> step_table(N_STEPS);
 
     for (int i = 0; i < N_STEPS; i++) {
-        localStepTable[i].a = rng_mersenne_twister(uint256_t{0}, stepSize, salt);
-        localStepTable[i].a.limbs[0] &= 0xFFFFFFFFFFFFFFFEULL;
+        localStepTable[i].a = uint256_t{};
         localStepTable[i].b = uint256_t{};
+        localStepTable[i].a = rng_mersenne_twister(uint256_t{}, stepSize, salt);
         uint64_t a_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
         jacobianScalarMultPhi(&localStepTable[i].point, preCompG, preCompGphi, a_tmp, windowSize);
@@ -1375,16 +1374,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                                 search_in_progress.store(false, std::memory_order_release);
                                 break;
                             } else {
-                                reset(w, w->walk_id % 2 == 0);
-                                ECPointAffine aff;
-                                jacobianToAffine(&aff, &w->R);
-                                memcpy(&X_m[i * 4], aff.x, 32);
-                                memcpy(&Y_m[i * 4], aff.y, 32);
-                                memcpy(&A_m[i * 4], w->a.limbs, 32);
-                                memcpy(&snap_x[i * 4], &X_m[i * 4], 32);
-                                snap_steps[i] = 0;
-                                last_jmp_id[i] = 0xFFFFFFFFu;
-                                cur_step_idx[i] = get_step_idx(&X_m[i * 4], N_STEPS) | ((Y_m[i * 4] & 1) ? INV_FLAG : 0);
+                                next_s_idx = (next_s_idx + 1) & (N_STEPS - 1);
+                                cur_step_idx[i] = next_s_idx | (next_y_odd ? INV_FLAG : 0);
+                                total_escapes.fetch_add(1, std::memory_order_relaxed);
                             }
                         }
                     } catch (const std::exception& e) {
@@ -1800,9 +1792,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
-    if (dp <= 0 || dp > 32) {
+    if (dp <= 0 || dp > 16) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = std::max<int>(1, std::min<int>(key_range >> 2, 32));
+        dp = std::max<int>(1, std::min<int>((key_range - 1) >> 2, 16));
     }
 
     if (snapoint_path.empty()) {
