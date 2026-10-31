@@ -52,17 +52,20 @@ $R = a \cdot G + b \cdot H$
 
 `G` is the generator point.
 
-`H` is the target public key.
+`H` is the target public key ($H = k_{\text{true}} \cdot G$).
 
-`a` and `b` are scalar coefficients used for recovery after collision.
+`b` is a fixed binary scalar defining the walker type:
+- $b = 0$ (Tame walker): initialized at a random point in $G$ ($R = a \cdot G$).
+- $b = 1$ (Wild walker): initialized with an offset anchored to $H$ ($R = a \cdot G + 1 \cdot H$).
+The coefficient $b$ remains **strictly constant** ($0$ or $1$) throughout the entire walk.
 
-The transition function uses a precomputed step table and MurmurHash3
-avalanche mixing.
+`a` is the dynamic scalar accumulator. Because transition jumps are precomputed multiples of the known generator $G$ ($S_i = s_i \cdot G$), **only $a$ is updated at each step** ($a \leftarrow a \pm s_i \pmod N$), keeping elliptic curve additions fast and homogeneous without requiring expensive runtime operations on $H$.
 
-When two walkers reach the same point with different coefficients, a
-modular equation allows recovery through modular inversion.
+The transition function uses a precomputed step table and MurmurHash3 avalanche mixing.
 
-## Benchmark CPU v5e-8 224 cores
+When two walkers reach the same point with different coefficients ($b_1 \neq b_2$), a linear modular congruence $\Delta a \equiv \pm \Delta b \cdot k_{\text{true}} \pmod N$ directly recovers the private key through a single modular inversion.
+
+## Theoretical Benchmark vCPU v5e-8 224 vcores (6.72 Gops/s)
 
 <details>
 <summary><strong>  Note:</strong></summary>
@@ -82,10 +85,13 @@ modular equation allows recovery through modular inversion.
 40 bits ≈ 00:00:00
 45 bits ≈ 00:00:00
 50 bits ≈ 00:00:00
-55 bits ≈ 00:00:04
-60 bits ≈ 00:00:07
-65 bits ≈ 00:00:43
-70 bits ≈ 00:01:09
+55 bits ≈ 00:00:00
+60 bits ≈ 00:00:00
+65 bits ≈ 00:00:01
+70 bits ≈ 00:00:04
+75 bits ≈ 00:00:24
+80 bits ≈ 00:02:16
+90 bits ≈ 01:12:39
 ```
 
 ## Average k-Factor
@@ -94,46 +100,35 @@ The formal equation by van Oorschot and Wiener (1999) on paper: [P. C. Van Oorsc
 
 $T_\lambda = \left( \frac{2 \sqrt{b}}{m} + \frac{1}{\theta} \right) t$
 
-The expected constant for the factor k is:
+In this architecture, the search executes an unbiased **one-dimensional Brownian motion (diffusion)** over a centered interval $\mathcal{I} = [-W/2, +W/2]$ using the Gaudry-Schost / Galbraith-Ruprai framework with Negation Map symmetry ($P \sim -P$).
 
-$E[\text{ops}] \approx 1.2533 \sqrt{W}$
+The theoretical solution bounds derived from the birthday paradox distribution are:
+
+- **Theoretical Median (50% probability):**
+  $$k_{50} = \sqrt{2 \ln(2)} \approx 1.1774$$
+
+- **Theoretical Mean (Expected constant for factor $k$):**
+  $$k_{\text{mean}} = \sqrt{\frac{\pi}{2}} \approx 1.2533$$
+
+$$\mathbb{E}[\text{ops}] \approx \sqrt{\frac{\pi}{2}} \sqrt{W} \approx 1.2533 \sqrt{W}$$
 
 This value represents the theoretical efficiency boundary predicted for parallel collision search when elliptic curve symmetry reduction is applied through the Negation Map.
 
-The implementation achieves an empirical average k-factor:
-
-<details>
-<summary><strong>  Note:</strong></summary>
-
-<sub><i>The project is under active development. The reported average k-factor reflects the algorithm's current state and should not be considered the final value for implementation, and the actual average k-factor of this implementation will never be achieved in smaller intervals because in the context of Monte Carlo-based collision search algorithms for ECDLP, the average K-factor exhibits deterministic asymptotic stabilization as the search space (key range) expands. This performance convergence is intrinsically driven by the progressive vanishing of geometric boundary penalties. In exponentially larger intervals, spatial density dilutes, causing the probability of walker ejections or 'deaths' resulting from edge collisions to approach zero, thereby eradicating fruitless cycles. Consequently, the system's optimal mean step size multiplier ($m$) organically relaxes toward the continuous theoretical limit of 3.0, corroborating established cryptographic literature on random walks. This thermodynamic behavior is strictly governed by Markov chain dynamics, wherein the initial boundary-induced clustering penalty undergoes a probabilistic exponential decay, ultimately converging into its asymptotic stationary distribution.</i></sub>
-
-</details>
-
-```cpp
-//8 thousand samples in the 50-bit range.
-```
-
-$average k ≈ 1.230$
-
-$median k ≈ 1.157$
-
-This value was obtained through thousands of independent benchmark samples, measuring the average number of operations required to solve interval-restricted searches.
-
 The observed k-factor is the result of the combined effect of multiple engineering optimizations:
 
-— Negation Map optimization.
+- Negation Map optimization.
 
-— Parallel collision search architecture.
+- Parallel collision search architecture.
 
-— Optimized random walk distribution.
+- Optimized random walk distribution.
 
-— Distinguished Points collision detection.
+- Distinguished Points collision detection.
 
-— Cache-aware precomputed step windows.
+- Cache-aware precomputed step windows.
 
-— Efficient walker synchronization.
+- Efficient walker synchronization.
 
-— Batch Jacobian-to-Affine conversion.
+- Batch Jacobian-to-Affine conversion.
 
 Shows that the implementation operates below the theoretical average bound expected for the generic optimized Pollard's Lambda model, approaching practical optimal performance under real execution conditions.
 
@@ -141,17 +136,17 @@ Lower-than-average k-factor values may still occur due to the statistical nature
 
 ## Implementation Highlights
 
-— Multi-threaded walkers.
+- Multi-threaded walkers.
 
-— Cache-aware tables.
+- Cache-aware tables.
 
-— Batch inversion.
+- Batch inversion.
 
-— Snapshot recovery.
+- Snapshot recovery.
 
-— Distinguished Point system.
+- Distinguished Point system.
 
-— Negation Map optimization.
+- Negation Map optimization.
 
 ## Technical Features
 
@@ -176,15 +171,15 @@ distinguished-point table, can be saved to disk and restored exactly where it le
 
 More DP bits:
 
-— Lower RAM usage.
+- Lower RAM usage.
 
-— Slower detection.
+- Slower detection.
 
 Fewer DP bits:
 
-— Faster detection.
+- Faster detection.
 
-— Higher RAM usage.
+- Higher RAM usage.
 
 #### Delay Of Distinguished Points
 
@@ -195,13 +190,13 @@ Theoretical Calculus:
 ```
 unsigned long long RAM_BYTES = (unsigned long long)sysconf(_SC_PAGESIZE) * (unsigned long long)sysconf(_SC_AVPHYS_PAGES);
 
-int dp = std::max(1, std::max((int)std::ceil((key_range / 2.0) - std::log2((double)RAM_BYTES / 128.0 /*128 bytes*/)), key_range >> 2));
+int dp = (key_range - 1) / 2.0) - std::log2((double)RAM_BYTES / sizeof(DPEntry));
 ```
 
 Simple Abstraction:
 
 ```
-int dp = std::max<int>(1, std::min<int>(key_range >> 2, static_cast<int>(sizeof(int32_t) * CHAR_BIT)));
+int dp = (key_range - 1) >> 2;
 ```
 
 ## Algorithm Complexity
@@ -227,9 +222,11 @@ approximately:
 
 $O\left(\sqrt{\frac{\text{range}}{2}}\right)$
 
- This implementation enforces strict geometric bounds (2S for type 0 walks and 3S for type 2 walks) to prevent long tails and wasted CPU cycles. By cutting off extreme statistical bad luck scenarios at the 3S mark, the engine consistently achieves the expected theoretical average of k ≈ 1.2533.
+ Under the Negation Map, steps are signed ($\pm s_i$) based on the coordinate parity ($y \pmod 2$), turning the scalar accumulation into an unbiased **one-dimensional Brownian motion (diffusion)** with $\mathbb{E}[\Delta A] = 0$ and spatial variance $\sigma^2 \approx \mathbb{E}[s_i^2]$.
 
- ​Due to the nature of the search, it may be possible to obtain solutions with a k-factor < 1.2533. These represent scenarios of extreme statistical luck solving the ECDLP within a distance of just 1S jump. This rare "sniper" event requires three specific conditions to align: the type 2 walker drops extremely close to the private key, immediately merges with a type 1 trail, and quickly triggers a Distinguished Point (DP). While rarer than standard 2S or 3S jumps convergences, the architecture fully capitalizes on these optimal drops when they occur.
+To mitigate fruitless 2-cycles ($P \to -P \to P$) and higher-order loops, the engine deploys a deterministic step perturbation alongside Brent's cycle detection. Walkers that disperse across the centered interval $[-W/2, +W/2]$ collide according to the birthday distribution, converging between the **theoretical median** $k_{50} = \sqrt{2 \ln(2)} \approx 1.1774$ and the **theoretical mean** $k_{\text{mean}} = \sqrt{\frac{\pi}{2}} \approx 1.2533$.
+
+Due to the stochastic nature of Monte Carlo diffusion, solutions with $k < 1.1774$ ("Exceptional Statistical Luck" / sniper drops) occur when a Wild walker trajectory drops in close proximity to a Tame trail and triggers a Distinguished Point (DP) with minimal delay. Conversely, natural random walk dispersion across the boundaries accounts for higher percentiles (80%–95%) without compromising algorithmic correctness.
 
 ## Academic References
 
@@ -252,7 +249,6 @@ Interval (2010)](https://eprint.iacr.org/2010/615.pdf)
 ## Prerequisites
 
 - g++
-- boost/multiprecision/cpp_int.hpp
 - libssl-dev
 
 ## Installation
@@ -266,7 +262,6 @@ Interval (2010)](https://eprint.iacr.org/2010/615.pdf)
     ```bash
     sudo apt update
     sudo apt install build-essential -y
-    sudo apt install boost-headers -y
     sudo apt install libssl-dev -y
     ```
 
@@ -288,7 +283,7 @@ Interval (2010)](https://eprint.iacr.org/2010/615.pdf)
 
     Example usage:
     ```bash
-    ~/pollardslambda$ ./lambda --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12 --t 8 --snaptime 15
+    ~/pollardslambda$ ./lambda --pubkey 02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16 --keyrange 135 --walkers 1000000 --dp 12 --t 8 --snaptime 0
     ```
 
 ## Commands
