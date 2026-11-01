@@ -878,7 +878,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     for (int i = 0; i < N_STEPS; i++) {
         localStepTable[i].a = uint256_t{};
         localStepTable[i].b = uint256_t{};
-        localStepTable[i].a = rng_mersenne_twister(uint256_t{}, stepSize, salt);
+        localStepTable[i].a = rng_mersenne_twister(uint256_t{1}, stepSize, salt);
         uint64_t a_tmp[4];
         uint256_to_uint64_array(a_tmp, localStepTable[i].a);
         jacobianScalarMultPhi(&localStepTable[i].point, preCompG, preCompGphi, a_tmp, windowSize);
@@ -958,11 +958,11 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
         uint64_t a_arr[4];
 
         if (a) {
-            w->a = rng_mersenne_twister(uint256_t{}, gk, w->rng);
+            w->a = rng_mersenne_twister(uint256_t{1}, gk, w->rng);
             w->b = uint256_t{};
             uint256_to_uint64_array(a_arr, w->a);
         } else {
-            uint256_t raw_a = rng_mersenne_twister(uint256_t{}, hk, w->rng);
+            uint256_t raw_a = rng_mersenne_twister(uint256_t{1}, hk, w->rng);
             raw_a.limbs[0] &= ~1ULL;
             if (compare_uint256(raw_a, qk) < 0) {
                 is_neg = true;
@@ -1195,6 +1195,10 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                     }
 
                     modSubP(&dx[i * 4], se.x, &X_m[i * 4]);
+
+                    if ((dx[i * 4] | dx[i * 4 + 1] | dx[i * 4 + 2] | dx[i * 4 + 3]) == 0) {
+                        dx[i * 4] = 1;
+                    }
                 }
 
                 memcpy(&scratch_prefix[0], &dx[0], 32);
