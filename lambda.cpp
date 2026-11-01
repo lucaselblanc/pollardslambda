@@ -434,26 +434,47 @@ std::vector<unsigned char> hex_to_bytes(const std::string& hex) {
 }
 
 uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
-    uint256_t res;
+    uint256_t res{};
     uint64_t carry = 0;
-    for(int i = 0; i < 4; i++) {
-        uint64_t sum = a.limbs[i] + b.limbs[i] + carry;
-        carry = (sum < a.limbs[i]) || (carry && sum == a.limbs[i]);
-        res.limbs[i] = sum;
+
+    for (int i = 0; i < 4; ++i) {
+        const uint64_t ai = a.limbs[i];
+        const uint64_t bi = b.limbs[i];
+        const uint64_t s1 = ai + bi;
+        const uint64_t c1 = (s1 < ai);
+        const uint64_t s2 = s1 + carry;
+        const uint64_t c2 = (s2 < s1);
+        res.limbs[i] = s2;
+        carry = c1 | c2;
     }
+
     bool ge = true;
-    for (int i = 3; i >= 0; i--) {
-        if (res.limbs[i] > N.limbs[i]) break;
-        if (res.limbs[i] < N.limbs[i]) { ge = false; break; }
-    }
-    if (ge) {
-        uint64_t borrow = 0;
-        for (int i = 0; i < 4; i++) {
-            uint64_t diff = res.limbs[i] - N.limbs[i] - borrow;
-            borrow = (res.limbs[i] < N.limbs[i]) || (borrow && res.limbs[i] == N.limbs[i]);
-            res.limbs[i] = diff;
+
+    for (int i = 3; i >= 0; --i) {
+        if (res.limbs[i] > N.limbs[i]) {
+            break;
+        }
+
+        if (res.limbs[i] < N.limbs[i]) {
+            ge = false;
+            break;
         }
     }
+
+    if (carry || ge) {
+        uint64_t borrow = 0;
+
+        for (int i = 0; i < 4; ++i) {
+            const uint64_t ni = N.limbs[i];
+            const uint64_t d1 = res.limbs[i] - ni;
+            const uint64_t b1 = (res.limbs[i] < ni);
+            const uint64_t d2 = d1 - borrow;
+            const uint64_t b2 = (d1 < borrow);
+            res.limbs[i] = d2;
+            borrow = b1 | b2;
+        }
+    }
+
     return res;
 }
 
