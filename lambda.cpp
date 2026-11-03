@@ -480,7 +480,7 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
 
 void getfcw(int key_range) {
     int w;
-    double exp_steps = std::pow(2, key_range / 2.0);
+    double exp_steps = std::pow(2, (key_range - 1) / 2.0);
     size_t pointSize = sizeof(ECPointJacobian);
     double ideal_memory = exp_steps * pointSize;
 
