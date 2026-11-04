@@ -927,19 +927,19 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     }
 
     uint256_t gk{};
-    int g_bit = key_range - 2;
+    int g_bit = key_range - 2; ///N÷2
     if (g_bit >= 0 && g_bit < 256) {
         gk.limbs[g_bit / 64] = 1ULL << (g_bit % 64);
     }
 
     uint256_t hk{};
-    int h_bit = key_range - 2;
+    int h_bit = key_range - 2; ///N÷2
     if (h_bit >= 0 && h_bit < 256) {
         hk.limbs[h_bit / 64] = 1ULL << (h_bit % 64);
     }
 
     uint256_t qk{};
-    int q_bit = key_range - 3;
+    int q_bit = key_range - 3; ///N÷4
     if (q_bit >= 0 && q_bit < 256) {
         qk.limbs[q_bit / 64] = 1ULL << (q_bit % 64);
     }
