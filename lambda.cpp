@@ -963,7 +963,10 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
             uint256_to_uint64_array(a_arr, w->a);
         } else {
             uint256_t raw_a = rng_mersenne_twister(uint256_t{1}, hk, w->rng);
-            raw_a.limbs[0] &= ~1ULL;
+            if (compare_uint256(raw_a, qk) == 0) {
+                raw_a = add_uint256(raw_a, uint256_t{1, 0, 0, 0});
+            }
+
             if (compare_uint256(raw_a, qk) < 0) {
                 is_neg = true;
                 uint256_t diff = sub_uint256(qk, raw_a);
@@ -1354,6 +1357,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                                     memcpy(k.limbs, real_k, 32);
                                     return true;
                                 }
+
                                 return false;
                             };
 
@@ -1453,7 +1457,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                     const long double b = std::ldexp(1.0L, (key_range - 1));
                     const long double theta = std::ldexp(1.0L, -DP_BITS);
                     const long double t = static_cast<long double>(cores) / static_cast<long double>(ops_ps);
-                    const long double exp_steps = sqrtl(2.0L * logl(2.0L)) * std::pow(2.0L, (key_range - 1) / 2.0L) / static_cast<long double>(cores)) + (1.0L / theta);
+                    const long double exp_steps = sqrtl(2.0L * logl(2.0L)) * std::pow(2.0L, (key_range - 1) / 2.0L) / static_cast<long double>(cores) + (1.0L / theta);
                     return exp_steps * t;
                 };
             
