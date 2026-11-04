@@ -480,7 +480,8 @@ uint256_t mod_add_N(const uint256_t& a, const uint256_t& b) {
 
 void getfcw(int key_range) {
     int w;
-    double exp_steps = std::pow(2, (key_range - 1) / 2.0);
+
+    const long double exp_steps = sqrtl(2.0L * logl(2.0L)) * std::pow(2.0L, (key_range - 1) / 2.0L);
     size_t pointSize = sizeof(ECPointJacobian);
     double ideal_memory = exp_steps * pointSize;
 
@@ -1452,7 +1453,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                     const long double b = std::ldexp(1.0L, (key_range - 1));
                     const long double theta = std::ldexp(1.0L, -DP_BITS);
                     const long double t = static_cast<long double>(cores) / static_cast<long double>(ops_ps);
-                    const long double exp_steps = (2.0L * std::sqrt(b) / static_cast<long double>(cores)) + (1.0L / theta);
+                    const long double exp_steps = sqrtl(2.0L * logl(2.0L)) * std::pow(2.0L, (key_range - 1) / 2.0L) / static_cast<long double>(cores)) + (1.0L / theta);
                     return exp_steps * t;
                 };
             
