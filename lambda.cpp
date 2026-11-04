@@ -734,7 +734,6 @@ static inline uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
     return static_cast<uint32_t>(hasher(combined) & (N_STEPS - 1));
 }
 
-
 bool DP(const uint64_t* affine_x, int DP_BITS) {
     if (DP_BITS <= 0) return false;
     if (DP_BITS >= 64) return (affine_x[0] == 0);
@@ -940,7 +939,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     }
 
     uint256_t qk{};
-    int q_bit = key_range - 2;
+    int q_bit = key_range - 3;
     if (q_bit >= 0 && q_bit < 256) {
         qk.limbs[q_bit / 64] = 1ULL << (q_bit % 64);
     }
