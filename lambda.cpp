@@ -943,6 +943,8 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     int q_bit = key_range - 3; ///N÷4
     if (q_bit >= 0 && q_bit < 256) {
         qk.limbs[q_bit / 64] = 1ULL << (q_bit % 64);
+    } else {
+        qk.limbs[0] = 1;
     }
 
     auto reset = [&](WalkState* w, bool a) {
