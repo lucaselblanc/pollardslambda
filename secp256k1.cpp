@@ -31,21 +31,6 @@ static inline int64_t _mul128(int64_t a, int64_t b, int64_t *h) {
 #define SWAP_STEP(tmp,x,y) do { tmp = x; x = y; y = tmp; } while(0)
 #define MSK62 0x3FFFFFFFFFFFFFFFULL
 
-static inline void secp256k1_reduce_final(uint64_t *r, unsigned char carry) {
-    uint64_t diff[4];
-    unsigned char b = 0;
-    b = _subborrow_u64(0, r[0], 0xFFFFFFFEFFFFFC2FULL, &diff[0]);
-    b = _subborrow_u64(b, r[1], 0xFFFFFFFFFFFFFFFFULL, &diff[1]);
-    b = _subborrow_u64(b, r[2], 0xFFFFFFFFFFFFFFFFULL, &diff[2]);
-    b = _subborrow_u64(b, r[3], 0xFFFFFFFFFFFFFFFFULL, &diff[3]);
-    if (carry || b == 0) {
-        r[0] = diff[0];
-        r[1] = diff[1];
-        r[2] = diff[2];
-        r[3] = diff[3];
-    }
-}
-
 constexpr uint64_t P_CONST[4] = { 0xFFFFFFFEFFFFFC2FULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint64_t N_CONST[4] = { 0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL };
 constexpr uint64_t GX_CONST[4] = { 0x59F2815B16F81798ULL, 0x029BFCDB2DCE28D9ULL, 0x55A06295CE870B07ULL, 0x79BE667EF9DCBBACULL };
@@ -72,48 +57,82 @@ ECPointJacobian* jacNormH = nullptr;
 ECPointJacobian* jacEndoH = nullptr;
 
 void montgomeryReduceP(uint64_t *result, const uint64_t *inputHigh, const uint64_t *inputLow) {
-    uint64_t temp[8];
-    for (int i = 0; i < 4; i++) {
-        temp[i]     =  inputLow[i];
-        temp[i + 4] = inputHigh[i];
-    }
+    uint64_t t0 = inputLow[0], t1 = inputLow[1], t2 = inputLow[2], t3 = inputLow[3];
+    uint64_t t4 = inputHigh[0], t5 = inputHigh[1], t6 = inputHigh[2], t7 = inputHigh[3];
+    uint64_t t8 = 0;
+    unsigned char c = 0, b = 0;
+    uint64_t q0 = t0 * MU_P;
+    uint64_t h0;
+    _umul128(q0, 0x1000003D1ULL, &h0);
+    b = _subborrow_u64(0, t1, h0, &t1);
+    b = _subborrow_u64(b, t2, 0, &t2);
+    b = _subborrow_u64(b, t3, 0, &t3);
+    b = _subborrow_u64(b, t4, 0, &t4);
+    b = _subborrow_u64(b, t5, 0, &t5);
+    b = _subborrow_u64(b, t6, 0, &t6);
+    b = _subborrow_u64(b, t7, 0, &t7);
+    _subborrow_u64(b, t8, 0, &t8);
+    c = _addcarry_u64(0, t4, q0, &t4);
+    c = _addcarry_u64(c, t5, 0, &t5);
+    c = _addcarry_u64(c, t6, 0, &t6);
+    c = _addcarry_u64(c, t7, 0, &t7);
+    _addcarry_u64(c, t8, 0, &t8);
 
-    uint64_t extra = 0;
+    uint64_t q1 = t1 * MU_P;
+    uint64_t h1;
+    _umul128(q1, 0x1000003D1ULL, &h1);
+    b = _subborrow_u64(0, t2, h1, &t2);
+    b = _subborrow_u64(b, t3, 0, &t3);
+    b = _subborrow_u64(b, t4, 0, &t4);
+    b = _subborrow_u64(b, t5, 0, &t5);
+    b = _subborrow_u64(b, t6, 0, &t6);
+    b = _subborrow_u64(b, t7, 0, &t7);
+    _subborrow_u64(b, t8, 0, &t8);
+    c = _addcarry_u64(0, t5, q1, &t5);
+    c = _addcarry_u64(c, t6, 0, &t6);
+    c = _addcarry_u64(c, t7, 0, &t7);
+    _addcarry_u64(c, t8, 0, &t8);
 
-    for (int i = 0; i < 4; i++) {
-        uint64_t ui = (uint64_t)((uint128_t)temp[i] * (uint128_t)MU_P);
-        uint128_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod = (uint128_t)ui * (uint128_t)P_CONST[j] + (uint128_t)temp[i + j] + carry;
-            temp[i + j] = (uint64_t)prod;
-            carry = prod >> 64;
-        }
+    uint64_t q2 = t2 * MU_P;
+    uint64_t h2;
+    _umul128(q2, 0x1000003D1ULL, &h2);
+    b = _subborrow_u64(0, t3, h2, &t3);
+    b = _subborrow_u64(b, t4, 0, &t4);
+    b = _subborrow_u64(b, t5, 0, &t5);
+    b = _subborrow_u64(b, t6, 0, &t6);
+    b = _subborrow_u64(b, t7, 0, &t7);
+    _subborrow_u64(b, t8, 0, &t8);
+    c = _addcarry_u64(0, t6, q2, &t6);
+    c = _addcarry_u64(c, t7, 0, &t7);
+    _addcarry_u64(c, t8, 0, &t8);
 
-        uint128_t s = (uint128_t)temp[i + 4] + carry;
-        temp[i + 4] = (uint64_t)s;
-        carry = s >> 64;
-
-        for (int j = i + 5; j < 8; ++j) {
-            uint128_t sum = (uint128_t)temp[j] + carry;
-            temp[j] = (uint64_t)sum;
-            carry = sum >> 64;
-        }
-
-        extra += (uint64_t)carry;
-    }
-
-    for (int i = 0; i < 4; i++) result[i] = temp[i + 4];
+    uint64_t q3 = t3 * MU_P;
+    uint64_t h3;
+    _umul128(q3, 0x1000003D1ULL, &h3);
+    b = _subborrow_u64(0, t4, h3, &t4);
+    b = _subborrow_u64(b, t5, 0, &t5);
+    b = _subborrow_u64(b, t6, 0, &t6);
+    b = _subborrow_u64(b, t7, 0, &t7);
+    _subborrow_u64(b, t8, 0, &t8);
+    c = _addcarry_u64(0, t7, q3, &t7);
+    _addcarry_u64(c, t8, 0, &t8);
 
     uint64_t diff[4];
-    uint128_t borrow = 0;
-    for (int i = 0; i < 4; i++) {
-        uint128_t sub = (uint128_t)result[i] - (uint128_t)P_CONST[i] - borrow;
-        diff[i] = (uint64_t)sub;
-        borrow = (sub >> 127) & 1;
-    }
+    b = _subborrow_u64(0, t4, P_CONST[0], &diff[0]);
+    b = _subborrow_u64(b, t5, P_CONST[1], &diff[1]);
+    b = _subborrow_u64(b, t6, P_CONST[2], &diff[2]);
+    b = _subborrow_u64(b, t7, P_CONST[3], &diff[3]);
 
-    if (extra != 0 || borrow == 0) {
-        for (int i = 0; i < 4; i++) result[i] = diff[i];
+    if (t8 != 0 || b == 0) {
+        result[0] = diff[0];
+        result[1] = diff[1];
+        result[2] = diff[2];
+        result[3] = diff[3];
+    } else {
+        result[0] = t4;
+        result[1] = t5;
+        result[2] = t6;
+        result[3] = t7;
     }
 }
 
@@ -174,7 +193,6 @@ void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         "mulx 24(%[a]), %%rax, %%r12\n\t"
         "adcq %%rax, %%r11\n\t"
         "adcq $0, %%r12\n\t"
-
         "movq 8(%[b]), %%rdx\n\t"
         "xorq %%rax, %%rax\n\t"
         "mulx 0(%[a]), %%rax, %%rbx\n\t"
@@ -191,7 +209,6 @@ void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         "movq $0, %%rax\n\t"
         "adcxq %%rax, %%r13\n\t"
         "adoxq %%rax, %%r13\n\t"
-
         "movq 16(%[b]), %%rdx\n\t"
         "xorq %%rax, %%rax\n\t"
         "mulx 0(%[a]), %%rax, %%rbx\n\t"
@@ -208,7 +225,6 @@ void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         "movq $0, %%rax\n\t"
         "adcxq %%rax, %%r14\n\t"
         "adoxq %%rax, %%r14\n\t"
-
         "movq 24(%[b]), %%rdx\n\t"
         "xorq %%rax, %%rax\n\t"
         "mulx 0(%[a]), %%rax, %%rbx\n\t"
@@ -225,30 +241,24 @@ void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         "movq $0, %%rax\n\t"
         "adcxq %%rax, %%r15\n\t"
         "adoxq %%rax, %%r15\n\t"
-
         "movabsq $0x1000003D1, %%rdx\n\t"
         "mulx %%r12, %%rax, %%rbx\n\t"
         "addq %%rax, %%r8\n\t"
         "adcq %%rbx, %%r9\n\t"
-
         "mulx %%r13, %%rax, %%rbx\n\t"
         "adcq %%rax, %%r9\n\t"
         "adcq %%rbx, %%r10\n\t"
-
         "mulx %%r14, %%rax, %%rbx\n\t"
         "adcq %%rax, %%r10\n\t"
         "adcq %%rbx, %%r11\n\t"
-
         "mulx %%r15, %%rax, %%r12\n\t"
         "adcq %%rax, %%r11\n\t"
         "adcq $0, %%r12\n\t"
-
         "mulx %%r12, %%rax, %%rbx\n\t"
         "addq %%rax, %%r8\n\t"
         "adcq %%rbx, %%r9\n\t"
         "adcq $0, %%r10\n\t"
         "adcq $0, %%r11\n\t"
-
         "movq $0, %%rax\n\t"
         "movabsq $0x1000003D1, %%rcx\n\t"
         "cmovc %%rcx, %%rax\n\t"
@@ -256,7 +266,6 @@ void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         "adcq $0, %%r9\n\t"
         "adcq $0, %%r10\n\t"
         "adcq $0, %%r11\n\t"
-
         "movq %%r8, %%rax\n\t"
         "addq %%rcx, %%rax\n\t"
         "movq %%r9, %%rbx\n\t"
@@ -265,12 +274,10 @@ void modMulK1(uint64_t *result, const uint64_t *a, const uint64_t *b) {
         "adcq $0, %%r12\n\t"
         "movq %%r11, %%r13\n\t"
         "adcq $0, %%r13\n\t"
-
         "cmovc %%rax, %%r8\n\t"
         "cmovc %%rbx, %%r9\n\t"
         "cmovc %%r12, %%r10\n\t"
         "cmovc %%r13, %%r11\n\t"
-
         "movq %%r8, 0(%[result])\n\t"
         "movq %%r9, 8(%[result])\n\t"
         "movq %%r10, 16(%[result])\n\t"
@@ -290,7 +297,6 @@ void modSquareK1(uint64_t *r, const uint64_t *a) {
         "mulx 24(%[a]), %%rax, %%r12\n\t"
         "adcq %%rax, %%r11\n\t"
         "adcq $0, %%r12\n\t"
-
         "movq 8(%[a]), %%rdx\n\t"
         "xorq %%rax, %%rax\n\t"
         "mulx 16(%[a]), %%rax, %%rbx\n\t"
@@ -301,12 +307,10 @@ void modSquareK1(uint64_t *r, const uint64_t *a) {
         "movq $0, %%rax\n\t"
         "adcxq %%rax, %%r13\n\t"
         "adoxq %%rax, %%r13\n\t"
-
         "movq 16(%[a]), %%rdx\n\t"
         "mulx 24(%[a]), %%rax, %%r14\n\t"
         "addq %%rax, %%r13\n\t"
         "adcq $0, %%r14\n\t"
-
         "xorq %%r15, %%r15\n\t"
         "addq %%r9, %%r9\n\t"
         "adcq %%r10, %%r10\n\t"
@@ -315,49 +319,39 @@ void modSquareK1(uint64_t *r, const uint64_t *a) {
         "adcq %%r13, %%r13\n\t"
         "adcq %%r14, %%r14\n\t"
         "adcq $0, %%r15\n\t"
-
         "movq 0(%[a]), %%rdx\n\t"
         "mulx %%rdx, %%r8, %%rax\n\t"
         "addq %%rax, %%r9\n\t"
-
         "movq 8(%[a]), %%rdx\n\t"
         "mulx %%rdx, %%rax, %%rbx\n\t"
         "adcq %%rax, %%r10\n\t"
         "adcq %%rbx, %%r11\n\t"
-
         "movq 16(%[a]), %%rdx\n\t"
         "mulx %%rdx, %%rax, %%rbx\n\t"
         "adcq %%rax, %%r12\n\t"
         "adcq %%rbx, %%r13\n\t"
-
         "movq 24(%[a]), %%rdx\n\t"
         "mulx %%rdx, %%rax, %%rbx\n\t"
         "adcq %%rax, %%r14\n\t"
         "adcq %%rbx, %%r15\n\t"
-
         "movabsq $0x1000003D1, %%rdx\n\t"
         "mulx %%r12, %%rax, %%rbx\n\t"
         "addq %%rax, %%r8\n\t"
         "adcq %%rbx, %%r9\n\t"
-
         "mulx %%r13, %%rax, %%rbx\n\t"
         "adcq %%rax, %%r9\n\t"
         "adcq %%rbx, %%r10\n\t"
-
         "mulx %%r14, %%rax, %%rbx\n\t"
         "adcq %%rax, %%r10\n\t"
         "adcq %%rbx, %%r11\n\t"
-
         "mulx %%r15, %%rax, %%r12\n\t"
         "adcq %%rax, %%r11\n\t"
         "adcq $0, %%r12\n\t"
-
         "mulx %%r12, %%rax, %%rbx\n\t"
         "addq %%rax, %%r8\n\t"
         "adcq %%rbx, %%r9\n\t"
         "adcq $0, %%r10\n\t"
         "adcq $0, %%r11\n\t"
-
         "movq $0, %%rax\n\t"
         "movabsq $0x1000003D1, %%rcx\n\t"
         "cmovc %%rcx, %%rax\n\t"
@@ -365,7 +359,6 @@ void modSquareK1(uint64_t *r, const uint64_t *a) {
         "adcq $0, %%r9\n\t"
         "adcq $0, %%r10\n\t"
         "adcq $0, %%r11\n\t"
-
         "movq %%r8, %%rax\n\t"
         "addq %%rcx, %%rax\n\t"
         "movq %%r9, %%rbx\n\t"
@@ -374,12 +367,10 @@ void modSquareK1(uint64_t *r, const uint64_t *a) {
         "adcq $0, %%r12\n\t"
         "movq %%r11, %%r13\n\t"
         "adcq $0, %%r13\n\t"
-
         "cmovc %%rax, %%r8\n\t"
         "cmovc %%rbx, %%r9\n\t"
         "cmovc %%r12, %%r10\n\t"
         "cmovc %%r13, %%r11\n\t"
-
         "movq %%r8, 0(%[r])\n\t"
         "movq %%r9, 8(%[r])\n\t"
         "movq %%r10, 16(%[r])\n\t"
@@ -641,47 +632,149 @@ void modinvP(uint64_t *result, const uint64_t *a) {
     result[3] = r.d[3];
 }
 
+static inline void mul256_512(uint64_t *low, uint64_t *high, const uint64_t *a, const uint64_t *b) {
+    asm volatile (
+        "movq 0(%[b]), %%rdx\n\t"
+        "mulx 0(%[a]), %%r8, %%r9\n\t"
+        "mulx 8(%[a]), %%rax, %%r10\n\t"
+        "addq %%rax, %%r9\n\t"
+        "mulx 16(%[a]), %%rax, %%r11\n\t"
+        "adcq %%rax, %%r10\n\t"
+        "mulx 24(%[a]), %%rax, %%r12\n\t"
+        "adcq %%rax, %%r11\n\t"
+        "adcq $0, %%r12\n\t"
+        "movq 8(%[b]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 0(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r9\n\t"
+        "adoxq %%rbx, %%r10\n\t"
+        "mulx 8(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r10\n\t"
+        "adoxq %%rbx, %%r11\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 24(%[a]), %%rax, %%r13\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "adoxq %%rax, %%r13\n\t"
+        "movq 16(%[b]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 0(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r10\n\t"
+        "adoxq %%rbx, %%r11\n\t"
+        "mulx 8(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "adoxq %%rbx, %%r13\n\t"
+        "mulx 24(%[a]), %%rax, %%r14\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r14\n\t"
+        "adoxq %%rax, %%r14\n\t"
+        "movq 24(%[b]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 0(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 8(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "adoxq %%rbx, %%r13\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "adoxq %%rbx, %%r14\n\t"
+        "mulx 24(%[a]), %%rax, %%r15\n\t"
+        "adcxq %%rax, %%r14\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r15\n\t"
+        "adoxq %%rax, %%r15\n\t"
+        "movq %%r8, 0(%[low])\n\t"
+        "movq %%r9, 8(%[low])\n\t"
+        "movq %%r10, 16(%[low])\n\t"
+        "movq %%r11, 24(%[low])\n\t"
+        "movq %%r12, 0(%[high])\n\t"
+        "movq %%r13, 8(%[high])\n\t"
+        "movq %%r14, 16(%[high])\n\t"
+        "movq %%r15, 24(%[high])\n\t"
+        :
+        : [low] "r" (low), [high] "r" (high), [a] "r" (a), [b] "r" (b)
+        : "rax", "rbx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "memory", "cc"
+    );
+}
+
+static inline void sqr256_512(uint64_t *low, uint64_t *high, const uint64_t *a) {
+    asm volatile (
+        "movq 0(%[a]), %%rdx\n\t"
+        "mulx 8(%[a]), %%r9, %%r10\n\t"
+        "mulx 16(%[a]), %%rax, %%r11\n\t"
+        "addq %%rax, %%r10\n\t"
+        "mulx 24(%[a]), %%rax, %%r12\n\t"
+        "adcq %%rax, %%r11\n\t"
+        "adcq $0, %%r12\n\t"
+        "movq 8(%[a]), %%rdx\n\t"
+        "xorq %%rax, %%rax\n\t"
+        "mulx 16(%[a]), %%rax, %%rbx\n\t"
+        "adcxq %%rax, %%r11\n\t"
+        "adoxq %%rbx, %%r12\n\t"
+        "mulx 24(%[a]), %%rax, %%r13\n\t"
+        "adcxq %%rax, %%r12\n\t"
+        "movq $0, %%rax\n\t"
+        "adcxq %%rax, %%r13\n\t"
+        "adoxq %%rax, %%r13\n\t"
+        "movq 16(%[a]), %%rdx\n\t"
+        "mulx 24(%[a]), %%rax, %%r14\n\t"
+        "addq %%rax, %%r13\n\t"
+        "adcq $0, %%r14\n\t"
+        "xorq %%r15, %%r15\n\t"
+        "addq %%r9, %%r9\n\t"
+        "adcq %%r10, %%r10\n\t"
+        "adcq %%r11, %%r11\n\t"
+        "adcq %%r12, %%r12\n\t"
+        "adcq %%r13, %%r13\n\t"
+        "adcq %%r14, %%r14\n\t"
+        "adcq $0, %%r15\n\t"
+        "movq 0(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%r8, %%rax\n\t"
+        "addq %%rax, %%r9\n\t"
+        "movq 8(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r10\n\t"
+        "adcq %%rbx, %%r11\n\t"
+        "movq 16(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r12\n\t"
+        "adcq %%rbx, %%r13\n\t"
+        "movq 24(%[a]), %%rdx\n\t"
+        "mulx %%rdx, %%rax, %%rbx\n\t"
+        "adcq %%rax, %%r14\n\t"
+        "adcq %%rbx, %%r15\n\t"
+        "movq %%r8, 0(%[low])\n\t"
+        "movq %%r9, 8(%[low])\n\t"
+        "movq %%r10, 16(%[low])\n\t"
+        "movq %%r11, 24(%[low])\n\t"
+        "movq %%r12, 0(%[high])\n\t"
+        "movq %%r13, 8(%[high])\n\t"
+        "movq %%r14, 16(%[high])\n\t"
+        "movq %%r15, 24(%[high])\n\t"
+        :
+        : [low] "r" (low), [high] "r" (high), [a] "r" (a)
+        : "rax", "rbx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "memory", "cc"
+    );
+}
+
 void modMulMontP(uint64_t *result, const uint64_t *a, const uint64_t *b) {
-    uint64_t temp[8] = {0};
-
-    for (int i = 0; i < 4; i++) {
-        uint64_t carry = 0;
-        for (int j = 0; j < 4; j++) {
-            uint128_t prod =
-                (uint128_t)a[i] * (uint128_t)b[j]
-              + (uint128_t)temp[i + j]
-              + (uint128_t)carry;
-
-            temp[i + j] = (uint64_t)prod;
-            carry = (uint64_t)(prod >> 64);
-        }
-        temp[i + 4] += carry;
-    }
-
-    montgomeryReduceP(result, temp + 4, temp);
+    uint64_t low[4], high[4];
+    mul256_512(low, high, a, b);
+    montgomeryReduceP(result, high, low);
 }
 
 void modSqrMontP(uint64_t *out, const uint64_t *in) {
-    modMulMontP(out, in, in);
-}
-
-void scalarReduceN(uint64_t *r, const uint64_t *k) {
-    bool ge = true;
-    for (int i = 3; i >= 0; i--) {
-        if (k[i] > N_CONST[i]) { ge = true; break; }
-        if (k[i] < N_CONST[i]) { ge = false; break; }
-    }
-
-    if (ge) {
-        uint128_t borrow = 0;
-        for (int i = 0; i < 4; i++) {
-            uint128_t res = (uint128_t)k[i] - N_CONST[i] - borrow;
-            r[i] = (uint64_t)res;
-            borrow = (res >> 127) & 1;
-        }
-    } else {
-        for (int i = 0; i < 4; i++) r[i] = k[i];
-    }
+    uint64_t low[4], high[4];
+    sqr256_512(low, high, in);
+    montgomeryReduceP(out, high, low);
 }
 
 void modExpMontP(uint64_t *res, const uint64_t *base, const uint64_t *exp)
@@ -786,15 +879,15 @@ void jacobianDouble(ECPointJacobian *R, const ECPointJacobian *P) {
     }
     modAddP(newZ, newZ, newZ);
     
-    modMulMontP(A, P->X, P->X);
-    modMulMontP(B, P->Y, P->Y);
-    modMulMontP(C, B, B);
+    modSqrMontP(A, P->X);
+    modSqrMontP(B, P->Y);
+    modSqrMontP(C, B);
     modMulMontP(D, P->X, B);
     modAddP(D, D, D);
     modAddP(D, D, D);
     modAddP(E, A, A);
     modAddP(E, E, A);
-    modMulMontP(F, E, E);
+    modSqrMontP(F, E);
     modSubP(R->X, F, D);
     modSubP(R->X, R->X, D);
     modSubP(tmp, D, R->X);
@@ -821,7 +914,7 @@ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJaco
     if (z1_is_one) {
         for(int i = 0; i < 4; ++i) { Z1Z1[i] = ONE_MONT[i]; U2[i] = Q->X[i]; S2[i] = Q->Y[i]; }
     } else {
-        modMulMontP(Z1Z1, P->Z, P->Z);
+        modSqrMontP(Z1Z1, P->Z);
         modMulMontP(U2, Q->X, Z1Z1);
         modMulMontP(S2, Q->Y, Z1Z1);
         modMulMontP(S2, S2, P->Z);
@@ -830,7 +923,7 @@ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJaco
     if (z2_is_one) {
         for(int i = 0; i < 4; ++i) { Z2Z2[i] = ONE_MONT[i]; U1[i] = P->X[i]; S1[i] = P->Y[i]; }
     } else {
-        modMulMontP(Z2Z2, Q->Z, Q->Z);
+        modSqrMontP(Z2Z2, Q->Z);
         modMulMontP(U1, P->X, Z2Z2);
         modMulMontP(S1, P->Y, Z2Z2);
         modMulMontP(S1, S1, Q->Z);
@@ -848,10 +941,10 @@ void jacobianAdd(ECPointJacobian *R, const ECPointJacobian *P, const ECPointJaco
         return;
     }
 
-    modMulMontP(I, H, H);
+    modSqrMontP(I, H);
     modMulMontP(J, I, H);
     modMulMontP(V, U1, I);
-    modMulMontP(newX, r, r);
+    modSqrMontP(newX, r);
     modSubP(newX, newX, J);
     modSubP(newX, newX, V);
     modSubP(newX, newX, V);
@@ -1304,7 +1397,7 @@ bool decompressAndValidatePublicKey(ECPointAffine* out, const unsigned char comp
     uint64_t x_mont[4], x2[4], x3[4], rhs[4];
 
     toMontgomeryP(x_mont, out->x);
-    modMulMontP(x2, x_mont, x_mont);
+    modSqrMontP(x2, x_mont);
     modMulMontP(x3, x2, x_mont);
     modAddP(rhs, x3, SEVEN_MONT);
 
@@ -1312,7 +1405,7 @@ bool decompressAndValidatePublicKey(ECPointAffine* out, const unsigned char comp
     sqrtModP(y_mont, rhs);
 
     uint64_t y2_test[4];
-    modMulMontP(y2_test, y_mont, y_mont);
+    modSqrMontP(y2_test, y_mont);
     for (int i = 0; i < 4; i++) {
         if (y2_test[i] != rhs[i]) {
             return false;
