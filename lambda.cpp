@@ -20,7 +20,7 @@ constexpr uint64_t SUB2_FP[4] = { 0xFFFFFFFEFFFFFC2DULL, 0xFFFFFFFFFFFFFFFFULL, 
 
 const std::string& RED = "\033[91m";
 const std::string& GREEN = "\033[92m";
-const std::string& BLUE = "\033[94m";
+const std::string& BLUE = "\033[38;2;0;0;139m";
 const std::string& CYAN = "\033[38;5;39m";
 const std::string& DARK_PINK = "\033[38;2;140;70;140m";
 const std::string& PINK = "\033[35m";
@@ -357,12 +357,11 @@ void loading_bar(uint64_t current, uint64_t total, const std::string& label) {
     int barWidth = 40;
     int pos = barWidth * percent;
 
-    std::cout << "\033[2A\r\033[J";
-
+    std::cout << "\033[2A\r";
     std::cout << label << "\n";
     for (int i = 0; i < barWidth; ++i) {
-        if (i < pos) std::cout << BLUE << "█" << RESET;
-        else std::cout << BLUE << "▒" << RESET;
+        if (i < pos) std::cout << PINK << "█" << RESET;
+        else std::cout << DARK_PINK << "▒" << RESET;
     }
 
     std::cout << " " << std::fixed << std::setprecision(1) << (percent * 100.0) << "%" << std::endl;
@@ -713,22 +712,6 @@ static inline void fast_scalar_sub(uint64_t* r, const uint64_t* a, const uint64_
     }
 }
 
-static inline void affine_point_add_fast(uint64_t *X, uint64_t *Y, const uint64_t *Px, const uint64_t *Py) {
-    uint64_t dx[4], dy[4], inv_dx[4], lmb[4], lmb2[4], new_x[4], tmp[4], new_y[4];
-    modSubP(dx, Px, X);
-    modinvP(inv_dx, dx);
-    modSubP(dy, Py, Y);
-    modMulK1(lmb, dy, inv_dx);
-    modSquareK1(lmb2, lmb);
-    modSubP(new_x, lmb2, X);
-    modSubP(new_x, new_x, Px);
-    modSubP(tmp, X, new_x);
-    modMulK1(new_y, lmb, tmp);
-    modSubP(new_y, new_y, Y);
-    memcpy(X, new_x, 32);
-    memcpy(Y, new_y, 32);
-}
-
 static inline uint32_t get_step_idx(const uint64_t* x, uint32_t N_STEPS) {
     uint64_t combined = x[0] ^ (x[1] << 1) ^ (x[2] << 2) ^ (x[3] << 3);
     MurmurHash3 hasher;
@@ -785,7 +768,7 @@ void batchJacobianToAffine(ECPointAffine* aff_out, const ECPointJacobian* jac_in
         uint64_t* z_inv = &scratch_inv[i * 4];
         uint64_t z2[4], z3[4], tmp_mont[4];
 
-        modMulMontP(z2, z_inv, z_inv);
+        modSqrMontP(z2, z_inv);
         modMulMontP(tmp_mont, jac_in[i].X, z2);
         fromMontgomeryP(aff_out[i].x, tmp_mont);
 
@@ -804,7 +787,6 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     }
 
     std::atomic<bool> search_in_progress(true);
-    std::atomic<int> loaded_walkers{0};
     std::atomic<unsigned long long> total_iters{0};
     std::atomic<unsigned long long> total_cycles{0};
     std::atomic<unsigned long long> total_escapes{0};
@@ -999,6 +981,15 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
         }
     };
 
+    auto out_of_bounds = [&](const uint64_t* a_limbs, const uint256_t& max_bound) -> bool {
+        uint256_t a_val;
+        memcpy(a_val.limbs, a_limbs, 32);
+        if (a_val.limbs[3] > 0x7FFFFFFFFFFFFFFFULL) {
+            a_val = sub_uint256(N, a_val);
+        }
+        return compare_uint256(a_val, max_bound) > 0;
+    };
+
     std::cout << CYAN << "Started at: " << RESET << PINK << std::put_time(&start_tm, "%H:%M:%S") << RESET << std::endl;
     std::cout << CYAN << "Threads: " << RESET << PINK << cores << RESET << std::endl;
     std::cout << CYAN << "Walkers: " << RESET << PINK << WALKERS << RESET << std::endl;
@@ -1007,8 +998,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     std::cout << CYAN << "Min Range: " << RESET << gradient_zeros(uint256_to_hex(min_scalar), DARK_PINK, PINK) << std::endl;
     std::cout << CYAN << "Max Range: " << RESET << gradient_zeros(uint256_to_hex(max_scalar), DARK_PINK, PINK) << std::endl;
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET;
-    std::cout << "\n\n\n\n\n\n";
-    std::string header = "\033[96m[!] Loading Walkers... \033[0m";
+    std::cout << "\n\n\n\n\n\n\n";
 
     if (!resumed_snapoint)
     {
@@ -1410,7 +1400,24 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                                 total_escapes.fetch_add(1, std::memory_order_relaxed);
                             }
                         }
-                    } catch (const std::exception& e) {
+
+                        bool is_b = (w->b.limbs[0] == 0);
+                        const uint256_t& bound = is_b ? gk : qk;
+                        if (out_of_bounds(&A_m[i * 4], bound)) {
+                            reset(w, is_b);
+                            ECPointAffine aff;
+                            jacobianToAffine(&aff, &w->R);
+                            memcpy(&X_m[i * 4], aff.x, 32);
+                            memcpy(&Y_m[i * 4], aff.y, 32);
+                            memcpy(&A_m[i * 4], w->a.limbs, 32);
+                            memcpy(&snap_x[i * 4], &X_m[i * 4], 32);
+                            snap_steps[i] = 0;
+                            last_jmp_id[i] = 0xFFFFFFFFu;
+                            cur_step_idx[i] = get_step_idx(&X_m[i * 4], N_STEPS) | ((Y_m[i * 4] & 1) ? INV_FLAG : 0);
+                            continue;
+                        }
+                    } 
+                    catch (const std::exception& e) {
                         std::cerr << RED << "\n[Thread Error]: " << e.what() << RESET << std::endl;
                         search_in_progress.store(false);
                         return;
@@ -1492,24 +1499,35 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                     exp_time_str = "~" + format_time(years) + " years";
                 }
 
-                std::cout << CYAN << "\033[5A\r"
+                std::cout << CYAN << "\033[6A\r"
                     << "\033[2KTotal Ops/1s: " << RESET << GREEN
                     << format_number(ops_ps) << RESET
                     << "\n"
                     << CYAN << "\033[2KDetected Cycles: " << RESET << GREEN
                     << format_number(total_cycles.load()) << RESET
-                    << "\n"
-                    << CYAN << "\033[2KCollision Probability: " << RESET << GREEN
-                    << std::fixed << std::setprecision(8)
-                    << prob << "...%" << RESET
-                    << "\n"
+                    << "\n"   
                     << CYAN << "\033[2KSnapoints: " << RESET << GREEN
                     << snapointStatus << RESET
                     << "\n"
                     << CYAN << "\033[2KExpected Time: " << RESET << GREEN
                     << exp_time_str << RESET
-                    << "\n" <<
+                    << "\n"
+                    << CYAN << "\033[2KCollision Probability: " << RESET << GREEN
+                    << std::fixed << std::setprecision(8)
+                    << prob << "...%" << RESET
+                    << "\n\n" <<
                 std::flush;
+
+                int current_prob = static_cast<int>(prob);
+                if (current_prob > 100) current_prob = 100;
+                if (current_prob < 0)   current_prob = 0;
+
+                static int last_printed_prob = -1;
+
+                if (current_prob != last_printed_prob && current_prob >= 0 && current_prob <= 100) {
+                    last_printed_prob = current_prob;
+                    loading_bar(static_cast<uint64_t>(current_prob), 100ULL, "");
+                }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
@@ -1834,15 +1852,18 @@ int main(int argc, char* argv[]) {
 
     init_secp256k1(key_range);
 
-    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit\n" << RESET;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Press 'Ctrl Z' to Quit" << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Auto Window-Size for secp256k1: " << RESET << PINK << windowSize << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "For DP: " << PINK << dp << RESET << GREEN << " the rarity is \033[35m1\033[0m \033[92min " << RESET << PINK << (1ULL << dp) << RESET << GREEN << " points" << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "If the indicator exceeds" << RESET << PINK << " 90% " << RESET << GREEN << "without any collisions, decrease --dp <value>" << RESET << std::endl;
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "DP values of" << RESET << PINK << " 14+ " << RESET << GREEN << "cause more 'collision delay', as they are indicated for long executions in ranges" << RESET << PINK << " >=100 " << RESET << GREEN << "bits" << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snapoints File: " << RESET << CYAN << snapoint_path << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Snaptime Interval: " << RESET << PINK << snaptime_sec << RESET << GREEN << "s" << RESET << std::endl;
     uint64_t max_throughput = static_cast<uint64_t>(cores) * 512ULL;
     if (static_cast<uint64_t>(walkers) != max_throughput) {
         std::cout << ORANGE << "[WRNG] For its " << PINK << cores << RESET << ORANGE << " Cores, Maximum Throughput Reached At: ~" << RESET << PINK << max_throughput << RESET << "." << std::endl;
     }
+    std::cout << ORANGE << "[INFO] " << RESET << GREEN << "Read more about this in the" << RESET << CYAN << " README " << RESET << std::endl;
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
 
     uint256_t found_key = lambda(pub_key_hex, key_range, walkers, dp, snapoint_path, snaptime_sec);
