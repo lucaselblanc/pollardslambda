@@ -104,11 +104,23 @@ In this architecture, the search executes an unbiased **one-dimensional Brownian
 
 The theoretical solution bounds derived from the birthday paradox distribution are:
 
-- **Theoretical Median (50% probability):**
+- **Theoretical Median (Center `25%–75%` of Range):**
   $$k_{50} = \sqrt{2 \ln(2)} \approx 1.1774$$
 
-- **Theoretical Mean (Expected constant for factor $k$):**
+- **Theoretical Mean (Center `25%–75%` of Range):**
   $$k_{\text{mean}} = \sqrt{\frac{\pi}{2}} \approx 1.2533$$
+
+- **Theoretical Median (Borders `0%–25%` or `75%–100%` of Range):**
+  $$k_{50} = 4(\sqrt{2} - 1)\sqrt{\ln(2)} \approx 1.3787$$
+
+- **Theoretical Mean (Borders `0%–25%` or `75%–100%` of Range):**
+  $$k_{\text{mean}} = 2(\sqrt{2} - 1)\sqrt{\pi} \approx 1.4676$$
+
+- **Theoretical Global Median (`0%–100%` of Range):**
+  $$k_{50} = \left(\frac{5\sqrt{2}}{4} - 1\right) 2\sqrt{\ln(2)} \approx 1.2781$$
+
+- **Theoretical Global Mean (`0%–100%` of Range — Galbraith & Ruprai, Thm. 4):**
+  $$k_{\text{mean}} = \left(\frac{5\sqrt{2}}{4} - 1\right)\sqrt{\pi} \approx 1.3604$$
 
 $$\mathbb{E}[\text{ops}] \approx \sqrt{\frac{\pi}{2}} \sqrt{W} \approx 1.2533 \sqrt{W}$$
 
