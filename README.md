@@ -9,9 +9,11 @@
 
 [Description](https://github.com/lucaselblanc/pollardslambda/tree/main?tab=readme-ov-file#description)
 
-[Benchmark](https://github.com/lucaselblanc/pollardslambda/tree/main#benchmark-tpu-v5e-8)
+[Benchmark](https://github.com/lucaselblanc/pollardslambda/tree/main#theoretical-benchmark-vcpu-v5e-8-224-vcores-672-gopss)
 
 [Average K Factor](https://github.com/lucaselblanc/pollardslambda/tree/main#average-k-factor)
+
+[Collision Types](https://github.com/lucaselblanc/pollardslambda/tree/main#collision-types-mathematical-formulation)
 
 [Technical Features](https://github.com/lucaselblanc/pollardslambda/tree/main#technical-features)
 
@@ -261,7 +263,7 @@ Theoretical Calculus:
 ```
 unsigned long long RAM_BYTES = (unsigned long long)sysconf(_SC_PAGESIZE) * (unsigned long long)sysconf(_SC_AVPHYS_PAGES);
 
-int dp = (key_range - 1) / 2.0) - std::log2((double)RAM_BYTES / sizeof(DPEntry));
+int dp = ((key_range - 1) / 2.0) - std::log2((double)RAM_BYTES / sizeof(DPEntry));
 ```
 
 Simple Abstraction:
