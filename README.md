@@ -45,27 +45,30 @@
 
 #### Pollard's Lambda (ρλ)
 
- The algorithm uses parallel pseudo-random walks based on an R-adding
-walk construction.
+The algorithm runs parallel pseudo-random walks over a centered interval $[-N/2,\, +N/2]$ using the **Gaudry–Schost / Galbraith–Ruprai** construction with elliptic curve equivalence classes $\{P, -P\}$ (Negation Map).
 
-Each walker maintains:
+First, the target public key $Q$ is shifted to the midpoint $s$ of the search range, defining $H = Q - s \cdot G = n \cdot G$ with $n \in [-N/2,\, +N/2]$. Each walker maintains a point:
 
-$R = a \cdot G + b \cdot H$
+$$R = a \cdot G + b \cdot H$$
 
-`G` is the generator point.
+- **`G`** is the secp256k1 generator point.
+- **`H`** is the midpoint-shifted target point ($H = n \cdot G$).
+- **`b`** is a fixed binary scalar defining the walker type (**strictly constant** throughout the walk):
+  - $b = 0$ (**Tame**, $T$): initialized uniformly in $|a| \le N/2$ ($R = a \cdot G$).
+  - $b = 1$ (**Wild**, $W$): initialized uniformly in $|a| \le N/4$ anchored to $H$ ($R = a \cdot G + H$).
+- **`a`** is the dynamic scalar accumulator. Because transition jumps are precomputed multiples of $G$ ($S_i = s_i \cdot G$), **only $a$ is updated at each step** ($a \leftarrow a \pm s_i \pmod{p_{\text{ord}}}$), with the sign determined by the parity of $y(R)$ so both points in $\{R, -R\}$ follow the same canonical walk.
 
-`H` is the target public key ($H = k_{\text{true}} \cdot G$).
+The transition function selects steps from a precomputed table via MurmurHash3 avalanche mixing, with step sizes scaled to $N/4 \cdot \sqrt{\theta}$ and initial border margins set by **Lemma 1** of Galbraith & Ruprai ($m\sqrt{2/(3\pi\theta)}$) to minimize boundary loss.
 
-`b` is a fixed binary scalar defining the walker type:
-- $b = 0$ (Tame walker): initialized at a random point in $G$ ($R = a \cdot G$).
-- $b = 1$ (Wild walker): initialized with an offset anchored to $H$ ($R = a \cdot G + 1 \cdot H$).
-The coefficient $b$ remains **strictly constant** ($0$ or $1$) throughout the entire walk.
+When two distinct walks collide on the same $x$-coordinate ($R_1 = \pm R_2$), the private key $k_{\text{true}} = (n + s) \bmod p_{\text{ord}}$ is recovered in two ways:
 
-`a` is the dynamic scalar accumulator. Because transition jumps are precomputed multiples of the known generator $G$ ($S_i = s_i \cdot G$), **only $a$ is updated at each step** ($a \leftarrow a \pm s_i \pmod N$), keeping elliptic curve additions fast and homogeneous without requiring expensive runtime operations on $H$.
+1. **Tame & Wild Collision ($b_1 \neq b_2$, $|\Delta b| = 1$):**
+   $$n \equiv a_T - a_W \pmod{p_{\text{ord}}} \quad (R_T = +R_W) \qquad \text{or} \qquad n \equiv -(a_T + a_W) \pmod{p_{\text{ord}}} \quad (R_T = -R_W)$$
+   Yielding the classical Galbraith–Ruprai (Thm. 3 & 4) expected cost of $\sqrt{\pi N / 2} \approx 1.2533\sqrt{N}$ in the central region ($25\%\text{–}75\%$) and $\left(\frac{5\sqrt{2}}{4} - 1\right)\sqrt{\pi N} \approx 1.3604\sqrt{N}$ globally.
 
-The transition function uses a precomputed step table and MurmurHash3 avalanche mixing.
-
-When two walkers reach the same point with different coefficients ($b_1 \neq b_2$), a linear modular congruence $\Delta a \equiv \pm \Delta b \cdot k_{\text{true}} \pmod N$ directly recovers the private key through a single modular inversion.
+2. **Opposite-Sign Wild & Wild Collision ($b_1 = b_2 = 1$, $R_{W_1} = -R_{W_2}$):**
+   $$(a_1 + n)\cdot G = -(a_2 + n)\cdot G \implies 2n \equiv -(a_1 + a_2) \pmod{p_{\text{ord}}} \implies n \equiv -(a_1 + a_2)\cdot 2^{-1} \pmod{p_{\text{ord}}}$$
+   Because `secp256k1` has prime group order $p_{\text{ord}}$, $2^{-1} \bmod p_{\text{ord}}$ always exists. Whenever $W$ and $-W$ overlap (central $25\%\text{–}75\%$ region, $|x| < 0.25$), these extra collisions lower the expected cost to $\sqrt{\pi N / (3 - 4|x|)}$ — reaching **$\sqrt{\pi / 3}\sqrt{N} \approx 1.0233\sqrt{N}$** at the midpoint ($50\%$) and reducing the combined global average to **$\approx 1.2971\sqrt{N}$**.
 
 ## Theoretical Benchmark vCPU v5e-8 224 vcores (6.72 Gops/s)
 
