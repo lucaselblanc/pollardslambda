@@ -1,0 +1,85 @@
+name: Build Linux & Windows
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libssl-dev
+
+      - name: Build (Linux)
+        run: make
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-linux-x64
+          path: lambda
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 (POSIX / MSYS)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          install: >-
+            gcc
+            make
+            openssl-devel
+
+      - name: Build (Windows POSIX)
+        run: |
+          make
+          mkdir -p dist-win
+          cp lambda.exe dist-win/ 2>/dev/null || cp lambda dist-win/lambda.exe
+          ldd dist-win/lambda.exe | awk '/\/usr\/bin\// {print $3}' | xargs -I{} cp "{}" dist-win/
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-windows-x64
+          path: dist-win/
+
+  release:
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package archives
+        run: |
+          tar -czf lambda-linux-x64.tar.gz -C artifacts/lambda-linux-x64 .
+          zip -rj lambda-windows-x64.zip artifacts/lambda-windows-x64/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            lambda-linux-x64.tar.gz
+            lambda-windows-x64.zip
