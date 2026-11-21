@@ -297,24 +297,17 @@ Each walker stores its current elliptic curve position and scalar state. Multipl
 
 ## Negation Map
 
-The implementation applies elliptic curve negation symmetry (Equivalence Class Size 2).
+The implementation applies elliptic curve negation symmetry (equivalence classes of size 2):
 
-$P = (x, y)$
+$$P = (x, y) \qquad \sim \qquad -P = (x, -y \bmod p)$$
 
-$-P = (x, -y \bmod p)$
+Because both points share the same $x$-coordinate, they are treated as the same state during the search. Halving the effective state space improves the expected leading constant by a factor of $\sqrt{2}$ over standard Gaudry–Schost (from $\approx 2.08\sqrt{N}$ down to $\approx 1.3604\sqrt{N}$ globally for Tame–Wild, or $\approx 1.2971\sqrt{N}$ when combined with opposite-sign Wild–Wild collisions).
 
-Equivalent points can be treated as the same state during the search.
+Under the Negation Map, steps are signed ($\pm s_i$) based on the coordinate parity ($y \bmod 2$), turning the scalar accumulation into an unbiased **one-dimensional random walk (diffusion)** with $\mathbb{E}[\Delta a] = 0$ and step variance $\sigma^2 = \mathbb{E}[s_i^2]$.
 
-The expected improvement changes the effective complexity to
-approximately:
+To mitigate fruitless 2-cycles ($P \to -P \to P$) and higher-order loops, the engine deploys deterministic 2-cycle avoidance alongside Brent's cycle detection. Walkers dispersing across the centered interval $[-N/2, +N/2]$ follow the Rayleigh/birthday distribution, converging in the central region ($25\%\text{–}75\%$) around $k_{50} = \sqrt{2 \ln(2)} \approx 1.1774$ (median) and $k_{\text{mean}} = \sqrt{\frac{\pi}{2}} \approx 1.2533$ (mean) for Tame–Wild, and down to $k_{\text{mean}} = \sqrt{\frac{\pi}{3}} \approx 1.0233$ at the midpoint when opposite-sign Wild–Wild collisions occur.
 
-$O\left(\sqrt{\frac{\text{range}}{2}}\right)$
-
- Under the Negation Map, steps are signed ($\pm s_i$) based on the coordinate parity ($y \pmod 2$), turning the scalar accumulation into an unbiased **one-dimensional Brownian motion (diffusion)** with $\mathbb{E}[\Delta A] = 0$ and spatial variance $\sigma^2 \approx \mathbb{E}[s_i^2]$.
-
-To mitigate fruitless 2-cycles ($P \to -P \to P$) and higher-order loops, the engine deploys a deterministic step perturbation alongside Brent's cycle detection. Walkers that disperse across the centered interval $[-W/2, +W/2]$ collide according to the birthday distribution, converging between the **theoretical median** $k_{50} = \sqrt{2 \ln(2)} \approx 1.1774$ and the **theoretical mean** $k_{\text{mean}} = \sqrt{\frac{\pi}{2}} \approx 1.2533$.
-
-Due to the stochastic nature of Monte Carlo diffusion, solutions with $k < 1.1774$ ("Exceptional Statistical Luck" / sniper drops) occur when a Wild walker trajectory drops in close proximity to a Tame trail and triggers a Distinguished Point (DP) with minimal delay. Conversely, natural random walk dispersion across the boundaries accounts for higher percentiles (80%–95%) without compromising algorithmic correctness.
+Due to the stochastic nature of Monte Carlo walks, individual runs with $k < 1.1774$ naturally occur when trajectories collide early and trigger a Distinguished Point (DP) with minimal delay, while the long Rayleigh tail accounts for higher percentiles ($80\%\text{–}95\%$) without affecting algorithmic correctness.
 
 ## Academic References
 
