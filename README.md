@@ -146,6 +146,65 @@ Shows that the implementation operates below the theoretical average bound expec
 
 Lower-than-average k-factor values may still occur due to the statistical nature of random walks, where some searches benefit from favorable trajectory convergence and collision timing.
 
+## Collision Types & Mathematical Formulation
+
+Using the shifted target point $Q' = Q - s \cdot G$ (where $s$ is the midpoint of the search interval), we seek $n \in [-N/2,\, +N/2]$ such that $Q' = n \cdot G$. Each walker tracks a state $(a, b)$ representing $R = a \cdot G + b \cdot Q'$ over equivalence classes $\{R, -R\}$ (which share the same $x$-coordinate):
+
+- **Tame ($T$):** $b = 0,\; |a| \le N/2 \implies R_T = a_T \cdot G$
+- **Wild ($W$):** $b = 1,\; |a| \le N/4 \implies R_W = (a_W + n) \cdot G$
+
+When two distinct walks collide on the same $x$-coordinate ($R_1 = \pm R_2$), two useful collision types can solve the discrete logarithm:
+
+### 1. Tame & Wild Collision ($b_1 \neq b_2$)
+
+A Tame walker collides with a Wild walker ($|\Delta b| = 1$). Depending on the relative sign of their $y$-coordinates in $\{R, -R\}$:
+
+- **Same sign ($R_T = +R_W$):**
+  $$a_T \equiv a_W + n \pmod{p_{\text{ord}}} \implies n \equiv a_T - a_W \pmod{p_{\text{ord}}}$$
+
+- **Opposite sign ($R_T = -R_W$):**
+  $$a_T \equiv -(a_W + n) \pmod{p_{\text{ord}}} \implies n \equiv -(a_T + a_W) \pmod{p_{\text{ord}}}$$
+
+The private key is then recovered as $k = (n + s) \bmod p_{\text{ord}}$.
+
+**Expected Operations — Galbraith & Ruprai (PKC 2010, Theorems 3 & 4):**
+Let $x = n / N \in [-0.5,\, +0.5]$ denote the normalized key position:
+
+- **Center (`25%–75%`, $|x| \le 0.25$):**
+  $$E_{\text{TW}}(x) = \sqrt{\frac{\pi N}{2}} \approx 1.2533\sqrt{N}$$
+
+- **Borders (`0%–25%` or `75%–100%`, $0.25 < |x| \le 0.5$):**
+  $$E_{\text{TW}}(x) = \frac{1}{2}\sqrt{\frac{\pi N}{\tfrac{3}{4} - |x|}}$$
+
+- **Global Average (`0%–100%`):**
+  $$E_{\text{TW}} = \left(\frac{5\sqrt{2}}{4} - 1\right)\sqrt{\pi N} \approx 1.3604\sqrt{N}$$
+
+---
+
+### 2. Wild & Wild Collision ($b_1 = b_2 = 1$)
+
+Two Wild walkers collide on the same $x$-coordinate:
+
+- **Same sign ($R_{W_1} = +R_{W_2}$):** $n$ cancels out ($a_1 \equiv a_2$), producing a trivial/fruitless collision.
+- **Opposite sign ($R_{W_1} = -R_{W_2}$):** occurs whenever $W$ and $-W$ overlap (inside the central `25%–75%` region, $|x| < 0.25$):
+  $$(a_1 + n) \cdot G = -(a_2 + n) \cdot G \implies 2n \equiv -(a_1 + a_2) \pmod{p_{\text{ord}}}$$
+
+Because `secp256k1` has prime group order $p_{\text{ord}}$ ($\gcd(2, p_{\text{ord}}) = 1$), $n$ is recovered directly using the modular inverse of $2$:
+
+$$n \equiv -(a_1 + a_2) \cdot 2^{-1} \pmod{p_{\text{ord}}}$$
+
+**Combined Expected Operations (Tame–Wild + Wild–Wild):**
+
+- **Center (`25%–75%`, $|x| < 0.25$):**
+  $$E_{\text{total}}(x) = \sqrt{\frac{\pi N}{3 - 4|x|}}$$
+  At the exact midpoint (`50%`, $x = 0$), this reaches:
+  $$k_{\text{mean}} = \sqrt{\frac{\pi}{3}} \approx 1.0233, \qquad k_{50} = \sqrt{\frac{4\ln(2)}{3}} \approx 0.9614$$
+
+- **Borders (`0%–25%` or `75%–100%`, $|x| \ge 0.25$):** $W \cap (-W) = \emptyset$, so Wild–Wild collisions vanish and complexity follows $E_{\text{TW}}(x)$.
+
+- **Combined Global Average (`0%–100%`):**
+  $$k_{\text{mean}} \approx 1.2971, \qquad k_{50} \approx 1.2185$$
+
 ## Implementation Highlights
 
 - Multi-threaded walkers.
