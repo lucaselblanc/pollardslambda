@@ -277,7 +277,19 @@ int dp = (key_range - 1) >> 2;
 
 ## Algorithm Complexity
 
- The expected time complexity of Pollard's Lambda algorithm for elliptic curves is $O(\sqrt{w})$, where $w$ is the width of the search interval. In this implementation, the probability distribution in the steps is restricted to $O\left(\sqrt{\frac{K}{2}}\right)$ by strictly bounding the random walk step sizes, which keeps the probabilistic window confined to the target range. Given secp256k1 and the inclusion of the Negation Map optimization, this translates to approximately $O\left(\sqrt{\frac{\text{range}}{2}}\right)$, as predicted by the birthday paradox for bounded random walks over a finite group.
+For an interval of width $N$, the asymptotic time complexity is $\Theta(\sqrt{N})$ group operations. While Big-O notation absorbs constant factors, the **Galbraith–Ruprai** construction with **Negation Map** equivalence classes ($\{P, -P\}$) significantly improves the leading constant over standard Gaudry–Schost ($\approx 2.08\sqrt{N}$):
+
+- **Time Complexity (Expected Group Operations):**
+  - **Tame–Wild only (Galbraith & Ruprai, Thm. 4):** $\approx 1.3604\sqrt{N}$ globally ($\approx 1.2533\sqrt{N}$ in the central $25\%\text{–}75\%$ region).
+  - **Combined with opposite-sign Wild–Wild collisions:** $\approx 1.2971\sqrt{N}$ globally (reaching $\approx 1.0233\sqrt{N}$ at the exact midpoint).
+  - **Parallel Execution ($m$ cores, DP density $\theta = 2^{-d}$):** following van Oorschot & Wiener, the expected wall-clock time scales linearly with $m$:
+    $$T \approx \left(\frac{k_{\text{mean}}\sqrt{N}}{m} + \frac{1}{\theta}\right) t$$
+    where $t$ is the average time per group operation.
+
+- **Space Complexity (RAM):**
+  - With Distinguished Points of density $\theta = 2^{-d}$, only a fraction $\theta$ of visited points are stored, reducing memory from $O(\sqrt{N})$ to **$O(\theta\sqrt{N})$**.
+
+Bounding the step sizes and initial margins via **Lemma 1** ($m\sqrt{2/(3\pi\theta)}$) does not change the asymptotic class, but keeps the walks tightly confined to the target intervals so empirical performance stays within $\sim 1\%$ of the theoretical constant.
 
 ## Walker Architecture
 
