@@ -13,7 +13,7 @@
 
 [Average K Factor](https://github.com/lucaselblanc/pollardslambda/tree/main#average-k-factor)
 
-[Collision Types](https://github.com/lucaselblanc/pollardslambda/tree/main##collision-types--mathematical-formulation)
+[Collision Types](https://github.com/lucaselblanc/pollardslambda/blob/main/README.md#collision-types--mathematical-formulation)
 
 [Technical Features](https://github.com/lucaselblanc/pollardslambda/tree/main#technical-features)
 
