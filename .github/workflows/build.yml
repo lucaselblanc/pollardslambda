@@ -21,7 +21,9 @@ jobs:
           sudo apt-get install -y build-essential libssl-dev
 
       - name: Build (Linux)
-        run: make
+        run: |
+          sed -i 's/-march=native/-march=x86-64-v3/g' Makefile
+          make
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -50,6 +52,7 @@ jobs:
 
       - name: Build (Windows POSIX)
         run: |
+          sed -i 's/-std=c++14/-std=gnu++14 -D_GNU_SOURCE/g; s/-march=native/-march=x86-64-v3/g' Makefile
           make
           mkdir -p dist-win
           cp lambda.exe dist-win/ 2>/dev/null || cp lambda dist-win/lambda.exe
