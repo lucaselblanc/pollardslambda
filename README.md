@@ -2,6 +2,7 @@
 
 ![C++](https://img.shields.io/badge/Language-C++-blue)
 ![Linux](https://img.shields.io/badge/Platform-Linux-white)
+![Windows](https://img.shields.io/badge/Platform-Windows-blue)
 
 ## Fast Links:
 
