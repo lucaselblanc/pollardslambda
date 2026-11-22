@@ -663,14 +663,6 @@ uint256_t rng_mersenne_twister(const uint256_t& min_scalar, const uint256_t& max
     return add_uint256(r, min_scalar);
 }
 
-#ifndef _addcarry_u64
-#define _addcarry_u64(c_in, a, b, out) __builtin_ia32_addcarryx_u64(c_in, a, b, (unsigned long long*)(out))
-#endif
-
-#ifndef _subborrow_u64
-#define _subborrow_u64(b_in, a, b, out) __builtin_ia32_sbb_u64(b_in, a, b, (unsigned long long*)(out))
-#endif
-
 static inline void fast_scalar_add(uint64_t* r, const uint64_t* a, const uint64_t* b) {
     uint64_t sum[4];
     unsigned char c = 0;
