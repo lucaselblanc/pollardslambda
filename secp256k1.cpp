@@ -12,14 +12,6 @@
 
 #include "secp256k1.h"
 
-#ifndef _addcarry_u64
-#define _addcarry_u64(c_in, a, b, out) __builtin_ia32_addcarryx_u64(c_in, a, b, (unsigned long long*)(out))
-#endif
-
-#ifndef _subborrow_u64
-#define _subborrow_u64(b_in, a, b, out) __builtin_ia32_sbb_u64(b_in, a, b, (unsigned long long*)(out))
-#endif
-
 static inline int64_t _mul128(int64_t a, int64_t b, int64_t *h) {
     __int128 p = (__int128)a * b;
     *h = (int64_t)(p >> 64);
