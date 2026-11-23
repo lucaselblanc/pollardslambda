@@ -877,7 +877,7 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
     uint256_t stepSize = {};
     const int wild_half_bits = key_range - 3; // N/4 = 2^(key_range - 3)
     const int sqrt_theta_bits = DP_BITS >> 1; // exp sqrt(theta) = 2^(-DP_BITS/2)
-    const int margin_shift = 3;               // ~0.72% to ~1.02% de N
+    const int margin_shift = 3;               // ~0.72% to ~1.02% of N
 
     int step_bit = wild_half_bits - sqrt_theta_bits - margin_shift;
     if (step_bit < 1) step_bit = 1;
@@ -1332,9 +1332,9 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
                         uint64_t esc_count = snap_steps[i] >> 48;
                         count++;
 
-                        if (__builtin_expect((count & 7ULL) == 0, 0)) {
+                        if (__builtin_expect((count & ((1ULL << (DP_BITS - 3)) - 1ULL)) == 0, 0)) {
                             const uint256_t& bound_chk = (((id_start + i) & 1) == 0) ? gk : qk;
-                            if (count >= max_trail_steps || out_of_bounds(&A_m[i * 4], bound_chk)) {
+                            if ((count >= max_trail_steps || out_of_bounds(&A_m[i * 4], bound_chk)) && !DP(new_x, DP_BITS)) {
                                 restart_walker_in_batch(i);
                                 continue;
                             }
@@ -1351,45 +1351,53 @@ uint256_t lambda(std::string target_pubkey_hex, int key_range, int WALKERS, int 
 
                     if (!DP(new_x, DP_BITS)) continue;
 
-                    if (out_of_bounds(&A_m[i * 4], (((id_start + i) & 1) == 0) ? gk : qk)) {
-                        restart_walker_in_batch(i);
-                        continue;
-                    }
-
                     WalkState* w = &walkers_state[id_start + i];
                     memcpy(w->a.limbs, &A_m[i * 4], 32);
                     try {
                         std::vector<DPEntry> colliding_entries;
-                        dp_table.lazy_emplace_l(X_m[i * 4 + 0], [&](auto& bucket) {
-                            auto& dps = bucket.second;
-                            bool exact_same_state = false;
-                            bool has_same_type = false;
-                            for (const auto& entry : dps) {
-                                if (entry.x[1] == X_m[i * 4 + 1] && entry.x[2] == X_m[i * 4 + 2] && entry.x[3] == X_m[i * 4 + 3]) {
-                                    if (compare_uint256(w->a, entry.a) == 0 && compare_uint256(w->b, entry.b) == 0) {
-                                        exact_same_state = true;
-                                    } else {
-                                        colliding_entries.push_back(entry);
-                                    }
-                                    if (compare_uint256(w->b, entry.b) == 0) {
-                                        has_same_type = true;
+                        if (out_of_bounds(&A_m[i * 4], (((id_start + i) & 1) == 0) ? gk : qk)) {
+                            dp_table.if_contains(X_m[i * 4 + 0], [&](const auto& bucket) {
+                                for (const auto& entry : bucket.second) {
+                                    if (entry.x[1] == X_m[i * 4 + 1] && entry.x[2] == X_m[i * 4 + 2] && entry.x[3] == X_m[i * 4 + 3]) {
+                                        if (compare_uint256(w->a, entry.a) != 0 || compare_uint256(w->b, entry.b) != 0) {
+                                            colliding_entries.push_back(entry);
+                                        }
                                     }
                                 }
-                            }
-                            if (!exact_same_state && !has_same_type) {
-                                DPEntry new_entry;
-                                std::memcpy(new_entry.x, &X_m[i * 4], sizeof(new_entry.x));
-                                new_entry.a = w->a;
-                                new_entry.b = w->b;
-                                dps.push_back(new_entry);
-                            }
-                        }, [&](auto bucket) {
-                            DPEntry entry;
-                            std::memcpy(entry.x, &X_m[i * 4], sizeof(entry.x));
-                            entry.a = w->a;
-                            entry.b = w->b;
-                            bucket(X_m[i * 4 + 0], std::vector<DPEntry>{entry});
-                        } );
+                            });
+                        }
+                        else {
+                            dp_table.lazy_emplace_l(X_m[i * 4 + 0], [&](auto& bucket) {
+                                auto& dps = bucket.second;
+                                bool exact_same_state = false;
+                                bool has_same_type = false;
+                                for (const auto& entry : dps) {
+                                    if (entry.x[1] == X_m[i * 4 + 1] && entry.x[2] == X_m[i * 4 + 2] && entry.x[3] == X_m[i * 4 + 3]) {
+                                        if (compare_uint256(w->a, entry.a) == 0 && compare_uint256(w->b, entry.b) == 0) {
+                                            exact_same_state = true;
+                                        } else {
+                                            colliding_entries.push_back(entry);
+                                        }
+                                        if (compare_uint256(w->b, entry.b) == 0) {
+                                            has_same_type = true;
+                                        }
+                                    }
+                                }
+                                if (!exact_same_state && !has_same_type) {
+                                    DPEntry new_entry;
+                                    std::memcpy(new_entry.x, &X_m[i * 4], sizeof(new_entry.x));
+                                    new_entry.a = w->a;
+                                    new_entry.b = w->b;
+                                    dps.push_back(new_entry);
+                                }
+                            }, [&](auto bucket) {
+                                DPEntry entry;
+                                std::memcpy(entry.x, &X_m[i * 4], sizeof(entry.x));
+                                entry.a = w->a;
+                                entry.b = w->b;
+                                bucket(X_m[i * 4 + 0], std::vector<DPEntry>{entry});
+                            } );
+                        }
 
                         bool solved = false;
                         if (!colliding_entries.empty()) {
@@ -1856,7 +1864,7 @@ int main(int argc, char* argv[]) {
             }
             has_walkers = true;
         } else if (arg == "--dp") {
-            if (i + 1 >= argc || !parse_int_safe(argv[++i], dp, 1, 16, "--dp")) {
+            if (i + 1 >= argc || !parse_int_safe(argv[++i], dp, 3, 16, "--dp")) {
                 if(i + 1 >= argc) {
                     std::cerr << RED << "[ERROR] Missing value for --dp" << RESET << std::endl;
                 } else {
@@ -1925,9 +1933,9 @@ int main(int argc, char* argv[]) {
 
     std::cout << BLUE << "---------------------------------------------------------------------------" << RESET << std::endl;
     std::cout << ORANGE << "[INFO] " << RESET << CYAN << "Add a Star to Support this Project ;)\n" << RESET;
-    if (dp <= 0 || dp > 16) {
+    if (dp < 3 || dp > 16) {
         std::cerr << ORANGE << "[INFO] " << RESET << GREEN << "Setting DP automatically..." << RESET << std::endl;
-        dp = std::max<int>(1, std::min<int>((key_range - 1) >> 2, 16));
+        dp = std::max<int>(3, std::min<int>((key_range - 1) >> 2, 16));
     }
 
     if (snapoint_path.empty()) {
